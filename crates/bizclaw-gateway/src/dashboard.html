@@ -140,7 +140,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
   </div>
 </div>
 
-<div id="app-container" class="app" style="display:flex">
+<div id="app-container" class="app">
   <aside class="sidebar">
     <div class="logo"><span class="icon">⚡</span><span class="text">BizClaw</span></div>
     <nav class="nav">
@@ -305,7 +305,7 @@ function showPairingGate(){
 }
 function hidePairingGate(){
   document.getElementById('pairing-gate').style.display='none';
-  document.getElementById('app-container').style.display='flex';
+  document.getElementById('app-container').style.display='grid';
 }
 async function doPairing(){
   const code=document.getElementById('pairing-input').value.trim();
