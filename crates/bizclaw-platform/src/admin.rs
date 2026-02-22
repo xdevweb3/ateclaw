@@ -255,9 +255,17 @@ async fn login(
     State(state): State<Arc<AdminState>>,
     Json(req): Json<LoginReq>,
 ) -> Json<serde_json::Value> {
-    match state.db.lock().unwrap().get_user_by_email(&req.email) {
+    let user = state.db.lock().unwrap().get_user_by_email(&req.email);
+    match user {
         Ok(Some((id, hash, role))) => {
-            if crate::auth::verify_password(&req.password, &hash) {
+            // Run bcrypt in blocking thread to avoid stalling the async runtime
+            let password = req.password.clone();
+            let hash_clone = hash.clone();
+            let ok = tokio::task::spawn_blocking(move || {
+                crate::auth::verify_password(&password, &hash_clone)
+            }).await.unwrap_or(false);
+
+            if ok {
                 match crate::auth::create_token(&id, &req.email, &role, &state.jwt_secret) {
                     Ok(token) => {
                         state.db.lock().unwrap().log_event("login_success", "user", &id, None).ok();
