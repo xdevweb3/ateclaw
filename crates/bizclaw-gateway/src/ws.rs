@@ -136,10 +136,18 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<AppState>) {
                             let result = {
                                 let mut agent = state.agent.lock().await;
                                 if let Some(agent) = agent.as_mut() {
+                                    // Connect knowledge base for RAG
+                                    agent.set_knowledge(state.knowledge.clone());
                                     Some(agent.process(&content).await)
                                 } else {
                                     None
                                 }
+                            };
+
+                            // Get context stats after processing
+                            let ctx_stats = {
+                                let agent = state.agent.lock().await;
+                                agent.as_ref().map(|a| a.context_stats().clone())
                             };
 
                             match result {
@@ -165,6 +173,7 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<AppState>) {
                                             "total_tokens": idx,
                                             "full_content": &response,
                                             "mode": "agent",
+                                            "context": ctx_stats,
                                         })).await;
                                     } else {
                                         let _ = send_json(&mut socket, &serde_json::json!({

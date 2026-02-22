@@ -1,5 +1,13 @@
 //! # BizClaw Agent
 //! The core agent engine — orchestrates providers, channels, memory, and tools.
+//! 
+//! ## Features (ported from OpenCrabs patterns):
+//! - **Multi-round tool calling**: Up to 3 rounds of tool → LLM → tool loops
+//! - **Memory retrieval (RAG)**: FTS5-powered search of past conversations
+//! - **Knowledge base integration**: Auto-search uploaded documents for context
+//! - **Auto-compaction**: Summarizes long conversations to prevent context overflow
+//! - **Session management**: Thread isolation via session_id
+//! - **Context tracking**: Monitor conversation length and estimate token usage
 
 pub mod engine;
 pub mod context;
@@ -14,9 +22,10 @@ use bizclaw_core::traits::provider::GenerateParams;
 use bizclaw_core::types::{Message, OutgoingMessage};
 
 /// Prompt cache — caches serialized system prompt + tool definitions to avoid
-/// re-serializing on every request. Speeds up repeated calls significantly.
+/// re-serializing on every request.
 struct PromptCache {
     /// Hash of system prompt for change detection
+    #[allow(dead_code)]
     system_prompt_hash: u64,
     /// Pre-serialized tool definitions ready for provider API
     cached_tool_defs: Vec<bizclaw_core::types::ToolDefinition>,
@@ -48,6 +57,25 @@ impl PromptCache {
     }
 }
 
+/// Context statistics for monitoring.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ContextStats {
+    /// Number of messages in conversation
+    pub message_count: usize,
+    /// Estimated token count (rough: 4 chars ≈ 1 token)
+    pub estimated_tokens: usize,
+    /// Context utilization percentage (based on max_context)
+    pub utilization_pct: f32,
+    /// Max context window size
+    pub max_context: usize,
+    /// Number of tool rounds executed in last request
+    pub last_tool_rounds: usize,
+    /// Whether auto-compaction was triggered
+    pub compacted: bool,
+    /// Current session ID
+    pub session_id: String,
+}
+
 /// The BizClaw agent — processes messages using LLM providers and tools.
 pub struct Agent {
     config: BizClawConfig,
@@ -57,6 +85,12 @@ pub struct Agent {
     security: bizclaw_security::DefaultSecurityPolicy,
     conversation: Vec<Message>,
     prompt_cache: PromptCache,
+    /// Current session ID for memory isolation
+    session_id: String,
+    /// Knowledge base for RAG (optional, shared with gateway)
+    knowledge: Option<std::sync::Arc<tokio::sync::Mutex<Option<bizclaw_knowledge::KnowledgeStore>>>>,
+    /// Context statistics from last process() call
+    last_stats: ContextStats,
 }
 
 impl Agent {
@@ -80,11 +114,21 @@ impl Agent {
             security,
             conversation,
             prompt_cache,
+            session_id: "default".to_string(),
+            knowledge: None,
+            last_stats: ContextStats {
+                message_count: 1,
+                estimated_tokens: 0,
+                utilization_pct: 0.0,
+                max_context: 128000,
+                last_tool_rounds: 0,
+                compacted: false,
+                session_id: "default".to_string(),
+            },
         })
     }
 
     /// Create a new agent with MCP server support (async).
-    /// Connects to all configured MCP servers and registers their tools.
     pub async fn new_with_mcp(config: BizClawConfig) -> Result<Self> {
         let provider = bizclaw_providers::create_provider(&config)?;
         let memory = bizclaw_memory::create_memory(&config.memory)?;
@@ -128,21 +172,69 @@ impl Agent {
             security,
             conversation,
             prompt_cache,
+            session_id: "default".to_string(),
+            knowledge: None,
+            last_stats: ContextStats {
+                message_count: 1,
+                estimated_tokens: 0,
+                utilization_pct: 0.0,
+                max_context: 128000,
+                last_tool_rounds: 0,
+                compacted: false,
+                session_id: "default".to_string(),
+            },
         })
     }
 
+    /// Attach a knowledge base for RAG-enhanced responses.
+    pub fn set_knowledge(&mut self, kb: std::sync::Arc<tokio::sync::Mutex<Option<bizclaw_knowledge::KnowledgeStore>>>) {
+        self.knowledge = Some(kb);
+    }
+
+    /// Set the current session ID for memory isolation.
+    pub fn set_session(&mut self, session_id: &str) {
+        self.session_id = session_id.to_string();
+        self.last_stats.session_id = session_id.to_string();
+    }
+
+    /// Get current session ID.
+    pub fn session_id(&self) -> &str {
+        &self.session_id
+    }
+
     /// Process a user message and generate a response.
-    /// Features: memory retrieval (RAG), multi-round tool calling (max 3 rounds).
+    /// Features: knowledge RAG, memory retrieval, multi-round tool calling, auto-compaction.
     pub async fn process(&mut self, user_message: &str) -> Result<String> {
+        let mut compacted = false;
+
         // ═══════════════════════════════════════
-        // Phase 1: Memory Retrieval (RAG-style)
+        // Phase 0: Auto-compaction Check
         // ═══════════════════════════════════════
-        // Search past conversations for relevant context
-        let memory_context = self.retrieve_memory(user_message).await;
-        if let Some(ref ctx) = memory_context {
-            // Inject memory as a context message before the user message
+        let estimated_tokens = self.estimate_tokens();
+        let max_context = self.config.brain.context_length as usize;
+        let utilization = if max_context > 0 { estimated_tokens as f32 / max_context as f32 } else { 0.0 };
+
+        if utilization > 0.70 && self.conversation.len() > 10 {
+            tracing::info!("📦 Auto-compaction triggered ({}% context used)", (utilization * 100.0) as u32);
+            self.compact_conversation().await;
+            compacted = true;
+        }
+
+        // ═══════════════════════════════════════
+        // Phase 1: Knowledge Base RAG
+        // ═══════════════════════════════════════
+        if let Some(kb_context) = self.search_knowledge(user_message).await {
             self.conversation.push(Message::system(&format!(
-                "[Relevant past conversations]\n{ctx}\n[End of past conversations]"
+                "[Knowledge Base — relevant documents]\n{kb_context}\n[End of knowledge context]"
+            )));
+        }
+
+        // ═══════════════════════════════════════
+        // Phase 2: Memory Retrieval
+        // ═══════════════════════════════════════
+        if let Some(memory_ctx) = self.retrieve_memory(user_message).await {
+            self.conversation.push(Message::system(&format!(
+                "[Past conversations]\n{memory_ctx}\n[End of past conversations]"
             )));
         }
 
@@ -159,27 +251,25 @@ impl Agent {
             self.conversation.extend(tail);
         }
 
-        // Get cached tool definitions (avoids re-serialization)
+        // Get cached tool definitions
         let tool_defs = self.prompt_cache.tool_defs(&self.tools).to_vec();
 
-        // Create generation params
         let params = GenerateParams {
             model: self.config.default_model.clone(),
             temperature: self.config.default_temperature,
-            max_tokens: 4096,
+            max_tokens: self.config.brain.max_tokens,
             top_p: 0.9,
             stop: vec![],
         };
 
         // ═══════════════════════════════════════
-        // Phase 2: Multi-round Tool Calling Loop
+        // Phase 3: Multi-round Tool Calling Loop
         // ═══════════════════════════════════════
-        // Allow up to MAX_TOOL_ROUNDS rounds of tool calls
         const MAX_TOOL_ROUNDS: usize = 3;
         let mut final_content = String::new();
+        let mut tool_rounds_used = 0;
 
         for round in 0..=MAX_TOOL_ROUNDS {
-            // Call the provider (with tools on rounds 0..MAX, without on final)
             let current_tools = if round < MAX_TOOL_ROUNDS { &tool_defs } else { &vec![] };
             let response = self.provider.chat(&self.conversation, current_tools, &params).await?;
 
@@ -191,6 +281,7 @@ impl Agent {
             }
 
             // Has tool calls → execute them
+            tool_rounds_used = round + 1;
             tracing::info!("Tool round {}/{}: {} tool call(s)",
                 round + 1, MAX_TOOL_ROUNDS, response.tool_calls.len());
 
@@ -219,7 +310,6 @@ impl Agent {
                 if let Some(tool) = self.tools.get(&tc.function.name) {
                     match tool.execute(&tc.function.arguments).await {
                         Ok(result) => {
-                            // Truncate large outputs to avoid context overflow
                             let output = if result.output.len() > 4000 {
                                 format!("{}...\n[truncated, {} total chars]",
                                     &result.output[..4000], result.output.len())
@@ -254,8 +344,6 @@ impl Agent {
             for tr in tool_results {
                 self.conversation.push(tr);
             }
-
-            // Loop continues → provider will see tool results and decide next action
         }
 
         // If we exhausted all rounds without a final text response
@@ -265,15 +353,50 @@ impl Agent {
         }
 
         // ═══════════════════════════════════════
-        // Phase 3: Save to Memory
+        // Phase 4: Save to Memory + Update Stats
         // ═══════════════════════════════════════
         self.save_memory(user_message, &final_content).await;
+
+        // Update context stats
+        let new_tokens = self.estimate_tokens();
+        self.last_stats = ContextStats {
+            message_count: self.conversation.len(),
+            estimated_tokens: new_tokens,
+            utilization_pct: new_tokens as f32 / max_context as f32 * 100.0,
+            max_context,
+            last_tool_rounds: tool_rounds_used,
+            compacted,
+            session_id: self.session_id.clone(),
+        };
 
         Ok(final_content)
     }
 
-    /// Retrieve relevant past conversations from memory.
-    /// Extracts keywords from the user message and searches SQLite.
+    /// Search the knowledge base for relevant context.
+    async fn search_knowledge(&self, query: &str) -> Option<String> {
+        let kb_arc = self.knowledge.as_ref()?;
+        let kb_lock = kb_arc.lock().await;
+        let kb = kb_lock.as_ref()?;
+
+        let results = kb.search(query, 3);
+        if results.is_empty() {
+            return None;
+        }
+
+        let mut context = String::new();
+        for (i, r) in results.iter().enumerate() {
+            let entry = format!("{}. [{}] {}\n", i + 1, r.doc_name, r.content);
+            if context.len() + entry.len() > 1500 {
+                break;
+            }
+            context.push_str(&entry);
+        }
+
+        tracing::debug!("Knowledge RAG: {} results, {} chars", results.len(), context.len());
+        Some(context)
+    }
+
+    /// Retrieve relevant past conversations from memory (FTS5-powered).
     async fn retrieve_memory(&self, user_message: &str) -> Option<String> {
         if !self.config.memory.auto_save {
             return None;
@@ -295,29 +418,28 @@ impl Agent {
         let keywords: Vec<&str> = user_message
             .split(|c: char| !c.is_alphanumeric() && c != '_')
             .filter(|w| w.len() > 2 && !stop_words.contains(&w.to_lowercase().as_str()))
-            .take(5) // Max 5 keywords
+            .take(5)
             .collect();
 
         if keywords.is_empty() {
             return None;
         }
 
-        // Search memory for each keyword, collect unique results
-        let mut seen = std::collections::HashSet::new();
+        // Search memory with combined keywords for better FTS5 results
+        let combined_query = keywords.join(" ");
         let mut relevant = Vec::new();
+        let mut seen = std::collections::HashSet::new();
 
-        for keyword in &keywords {
-            match self.memory.search(keyword, 3).await {
-                Ok(results) => {
-                    for r in results {
-                        if seen.insert(r.entry.id.clone()) {
-                            relevant.push(r.entry.content.clone());
-                        }
+        match self.memory.search(&combined_query, 5).await {
+            Ok(results) => {
+                for r in results {
+                    if seen.insert(r.entry.id.clone()) {
+                        relevant.push(r.entry.content.clone());
                     }
                 }
-                Err(e) => {
-                    tracing::debug!("Memory search for '{}' failed: {e}", keyword);
-                }
+            }
+            Err(e) => {
+                tracing::debug!("Memory search failed: {e}");
             }
         }
 
@@ -325,7 +447,6 @@ impl Agent {
             return None;
         }
 
-        // Limit total context to ~2000 chars
         let mut context = String::new();
         let mut total_len = 0;
         for (i, memory) in relevant.iter().take(5).enumerate() {
@@ -337,19 +458,19 @@ impl Agent {
             total_len += entry.len();
         }
 
-        tracing::debug!("Memory retrieval: {} keywords → {} results, {} chars",
-            keywords.len(), relevant.len(), total_len);
-
+        tracing::debug!("Memory RAG: {} results, {} chars", relevant.len(), total_len);
         Some(context)
     }
 
-    /// Save interaction to memory (internal).
+    /// Save interaction to memory with session ID.
     async fn save_memory(&self, user_msg: &str, assistant_msg: &str) {
         if self.config.memory.auto_save {
             let entry = bizclaw_core::traits::memory::MemoryEntry {
                 id: uuid::Uuid::new_v4().to_string(),
                 content: format!("User: {user_msg}\nAssistant: {assistant_msg}"),
-                metadata: serde_json::json!({}),
+                metadata: serde_json::json!({
+                    "session_id": self.session_id,
+                }),
                 embedding: None,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
@@ -361,9 +482,66 @@ impl Agent {
     }
 
     /// Public wrapper to save streamed conversations to memory.
-    /// Used by gateway WS handler when streaming bypasses the Agent engine.
     pub async fn save_memory_public(&self, user_msg: &str, assistant_msg: &str) {
         self.save_memory(user_msg, assistant_msg).await;
+    }
+
+    /// Auto-compact conversation when context is too large.
+    /// Keeps system prompt + summary of old messages + recent messages.
+    async fn compact_conversation(&mut self) {
+        if self.conversation.len() <= 10 {
+            return;
+        }
+
+        let system = self.conversation[0].clone();
+        
+        // Summarize old messages (keep last 10)
+        let old_count = self.conversation.len() - 10;
+        let old_messages: Vec<_> = self.conversation[1..=old_count].to_vec();
+        let recent: Vec<_> = self.conversation[old_count + 1..].to_vec();
+
+        // Create a summary of old messages
+        let mut summary_parts = Vec::new();
+        for msg in &old_messages {
+            let prefix = match msg.role {
+                bizclaw_core::types::Role::User => "User",
+                bizclaw_core::types::Role::Assistant => "AI",
+                bizclaw_core::types::Role::System => continue, // skip system messages
+                bizclaw_core::types::Role::Tool => "Tool",
+            };
+            // Take first 100 chars of each message
+            let content = if msg.content.len() > 100 {
+                format!("{}...", &msg.content[..100])
+            } else {
+                msg.content.clone()
+            };
+            summary_parts.push(format!("{prefix}: {content}"));
+        }
+
+        let summary = format!(
+            "[Compacted: {} earlier messages]\n{}\n[End of compacted context]",
+            old_count,
+            summary_parts.join("\n")
+        );
+
+        // Rebuild conversation: system + summary + recent
+        self.conversation.clear();
+        self.conversation.push(system);
+        self.conversation.push(Message::system(&summary));
+        self.conversation.extend(recent);
+
+        tracing::info!("📦 Compacted {} → {} messages", old_count + 10, self.conversation.len());
+    }
+
+    /// Estimate token count (rough heuristic: 1 token ≈ 4 chars for English, 2 chars for CJK).
+    fn estimate_tokens(&self) -> usize {
+        self.conversation.iter()
+            .map(|m| {
+                let chars = m.content.len();
+                // Rough estimate: mix of English and Vietnamese
+                chars / 3
+            })
+            .sum()
     }
 
     /// Process incoming message and create an outgoing response.
@@ -395,5 +573,10 @@ impl Agent {
     /// Clear conversation history (keep system prompt).
     pub fn clear_conversation(&mut self) {
         self.conversation.truncate(1);
+    }
+
+    /// Get last context statistics.
+    pub fn context_stats(&self) -> &ContextStats {
+        &self.last_stats
     }
 }

@@ -1329,6 +1329,12 @@ function handleWS(msg) {
       typing.style.display = 'none';
       const st = el.querySelector('.msg-streaming');
       if (st) st.classList.remove('msg-streaming');
+      // Show context stats if available (from Agent engine)
+      if (msg.context) {
+        const ctx = msg.context;
+        const ctxInfo = `📊 ctx: ${ctx.estimated_tokens||0} tokens (${(ctx.utilization_pct||0).toFixed(1)}%) | ${ctx.message_count||0} msgs${ctx.last_tool_rounds ? ' | 🔧 ' + ctx.last_tool_rounds + ' tool round(s)' : ''}${ctx.compacted ? ' | 📦 compacted' : ''}`;
+        addMsg(ctxInfo, 'system');
+      }
       break;
     case 'chat_response': addMsg(msg.content, 'bot'); break;
     case 'chat_error':
