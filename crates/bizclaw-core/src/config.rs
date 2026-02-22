@@ -311,6 +311,8 @@ pub struct ChannelConfig {
     pub telegram: Option<TelegramChannelConfig>,
     #[serde(default)]
     pub discord: Option<DiscordChannelConfig>,
+    #[serde(default)]
+    pub email: Option<EmailChannelConfig>,
 }
 
 /// Zalo channel configuration.
@@ -436,6 +438,27 @@ pub struct DiscordChannelConfig {
     #[serde(default)]
     pub allowed_channel_ids: Vec<u64>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmailChannelConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub imap_host: String,
+    #[serde(default = "default_imap_port_cfg")]
+    pub imap_port: u16,
+    #[serde(default)]
+    pub smtp_host: String,
+    #[serde(default = "default_smtp_port_cfg")]
+    pub smtp_port: u16,
+    #[serde(default)]
+    pub email: String,
+    #[serde(default)]
+    pub password: String,
+}
+
+fn default_imap_port_cfg() -> u16 { 993 }
+fn default_smtp_port_cfg() -> u16 { 587 }
 
 #[cfg(test)]
 mod tests {

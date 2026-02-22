@@ -514,6 +514,71 @@ async fn main() -> Result<()> {
             println!("   🌐 Dashboard: {url}");
             println!("   📡 API:       {url}/api/v1/info");
             println!("   🔌 WebSocket: ws://{}:{}/ws", gw_config.host, gw_config.port);
+
+            // ═══════════════════════════════════════════
+            // Start configured channels in background
+            // ═══════════════════════════════════════════
+            let channel_config = config.channel.clone();
+            let agent_config = config.clone();
+
+            // Telegram channel
+            if let Some(tg_config) = &channel_config.telegram {
+                if tg_config.enabled && !tg_config.bot_token.is_empty() {
+                    println!("   🤖 Telegram: starting bot...");
+                    let tg = bizclaw_channels::telegram::TelegramChannel::new(
+                        bizclaw_channels::telegram::TelegramConfig {
+                            bot_token: tg_config.bot_token.clone(),
+                            enabled: true,
+                            poll_interval: 1,
+                        }
+                    );
+                    let cfg_clone = agent_config.clone();
+                    tokio::spawn(async move {
+                        run_channel_loop("telegram", tg.start_polling(), cfg_clone).await;
+                    });
+                }
+            }
+
+            // Discord channel
+            if let Some(dc_config) = &channel_config.discord {
+                if dc_config.enabled && !dc_config.bot_token.is_empty() {
+                    println!("   🎮 Discord: starting bot...");
+                    let dc = bizclaw_channels::discord::DiscordChannel::new(
+                        bizclaw_channels::discord::DiscordConfig {
+                            bot_token: dc_config.bot_token.clone(),
+                            enabled: true,
+                            intents: (1 << 0) | (1 << 9) | (1 << 12) | (1 << 15),
+                        }
+                    );
+                    let cfg_clone = agent_config.clone();
+                    tokio::spawn(async move {
+                        run_channel_loop("discord", dc.start_gateway(), cfg_clone).await;
+                    });
+                }
+            }
+
+            // Email channel
+            if let Some(ref email_cfg) = channel_config.email {
+                if email_cfg.enabled && !email_cfg.email.is_empty() {
+                    println!("   📧 Email: starting listener ({})...", email_cfg.email);
+                    let em = bizclaw_channels::email::EmailChannel::new(
+                        bizclaw_channels::email::EmailConfig {
+                            imap_host: email_cfg.imap_host.clone(),
+                            imap_port: email_cfg.imap_port,
+                            smtp_host: email_cfg.smtp_host.clone(),
+                            smtp_port: email_cfg.smtp_port,
+                            email: email_cfg.email.clone(),
+                            password: email_cfg.password.clone(),
+                            ..Default::default()
+                        }
+                    );
+                    let cfg_clone = agent_config.clone();
+                    tokio::spawn(async move {
+                        run_channel_loop("email", em.start_polling(), cfg_clone).await;
+                    });
+                }
+            }
+
             println!();
 
             if open {
@@ -617,4 +682,94 @@ async fn run_init_wizard() -> Result<()> {
     println!("   bizclaw serve --open           # Open in browser");
 
     Ok(())
+}
+
+/// Run a channel listener loop — receives messages, routes through Agent, sends replies.
+/// Works for any channel that produces a Stream<Item = IncomingMessage>.
+async fn run_channel_loop<S>(
+    channel_name: &str,
+    mut stream: S,
+    config: bizclaw_core::BizClawConfig,
+) where
+    S: futures::Stream<Item = bizclaw_core::types::IncomingMessage> + Unpin,
+{
+    use futures::StreamExt;
+
+    tracing::info!("📡 Channel '{channel_name}' listener started");
+
+    // Create a dedicated Agent for this channel
+    let mut agent = match bizclaw_agent::Agent::new(config.clone()) {
+        Ok(a) => {
+            tracing::info!("✅ Agent for channel '{channel_name}' initialized (provider={})", a.provider_name());
+            a
+        }
+        Err(e) => {
+            tracing::error!("❌ Failed to create agent for channel '{channel_name}': {e}");
+            return;
+        }
+    };
+
+    // Create channel sender for replies
+    // We need a way to send messages back. For now, use the provider-specific send.
+    let send_client = reqwest::Client::new();
+
+    while let Some(incoming) = stream.next().await {
+        tracing::info!("[{channel_name}] Message from {}: {}",
+            incoming.sender_name.as_deref().unwrap_or(&incoming.sender_id),
+            &incoming.content[..incoming.content.len().min(100)]);
+
+        // Process through Agent Engine (tools + memory + providers)
+        match agent.process(&incoming.content).await {
+            Ok(response) => {
+                tracing::info!("[{channel_name}] Response: {}...",
+                    &response[..response.len().min(80)]);
+
+                // Send response back through the same channel
+                match channel_name {
+                    "telegram" => {
+                        // Use Telegram sendMessage API
+                        if let Some(ref tg_cfg) = config.channel.telegram {
+                            let url = format!("https://api.telegram.org/bot{}/sendMessage",
+                                tg_cfg.bot_token);
+                            let body = serde_json::json!({
+                                "chat_id": incoming.thread_id,
+                                "text": &response,
+                                "parse_mode": "Markdown",
+                            });
+                            if let Err(e) = send_client.post(&url).json(&body).send().await {
+                                tracing::error!("[telegram] Send failed: {e}");
+                            }
+                        }
+                    }
+                    "discord" => {
+                        // Use Discord REST API to send message
+                        if let Some(ref dc_cfg) = config.channel.discord {
+                            let url = format!(
+                                "https://discord.com/api/v10/channels/{}/messages",
+                                incoming.thread_id
+                            );
+                            let body = serde_json::json!({ "content": &response });
+                            if let Err(e) = send_client
+                                .post(&url)
+                                .header("Authorization", format!("Bot {}", dc_cfg.bot_token))
+                                .json(&body)
+                                .send()
+                                .await
+                            {
+                                tracing::error!("[discord] Send failed: {e}");
+                            }
+                        }
+                    }
+                    _ => {
+                        tracing::warn!("[{channel_name}] No send handler implemented");
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::error!("[{channel_name}] Agent error: {e}");
+            }
+        }
+    }
+
+    tracing::info!("📡 Channel '{channel_name}' listener stopped");
 }

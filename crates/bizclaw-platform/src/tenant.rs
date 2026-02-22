@@ -100,7 +100,7 @@ port = {}
                             let password = cfg["password"].as_str().unwrap_or("");
                             if !email.is_empty() && !password.is_empty() {
                                 config_content.push_str(&format!(
-                                    "\n[channel.email]\nimap_host = \"{}\"\nimap_port = {}\nsmtp_host = \"{}\"\nsmtp_port = {}\nemail = \"{}\"\npassword = \"{}\"\n",
+                                    "\n[channel.email]\nenabled = true\nimap_host = \"{}\"\nimap_port = {}\nsmtp_host = \"{}\"\nsmtp_port = {}\nemail = \"{}\"\npassword = \"{}\"\n",
                                     cfg["imap_host"].as_str().unwrap_or("imap.gmail.com"),
                                     cfg["imap_port"].as_str().unwrap_or("993"),
                                     cfg["smtp_host"].as_str().unwrap_or("smtp.gmail.com"),
