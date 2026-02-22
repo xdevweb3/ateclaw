@@ -27,7 +27,8 @@ impl Default for PlatformConfig {
             admin_port: 3000,
             base_port: 10001,
             domain: "bizclaw.vn".into(),
-            jwt_secret: "bizclaw-platform-secret-change-me".into(),
+            jwt_secret: std::env::var("JWT_SECRET")
+                .unwrap_or_else(|_| "bizclaw-platform-secret-change-me".into()),
             bizclaw_bin: "bizclaw".into(),
             data_dir: "~/.bizclaw/tenants".into(),
             db_path: "~/.bizclaw/platform.db".into(),

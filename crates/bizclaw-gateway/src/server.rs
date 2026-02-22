@@ -135,17 +135,30 @@ pub fn build_router(state: AppState) -> Router {
         .fallback(get(dashboard_page));
 
     protected.merge(public).merge(spa_fallback)
-        .layer(
-            CorsLayer::new()
-                .allow_origin(Any) // Dashboard is same-origin; external API callers need this
+        .layer({
+            let cors = CorsLayer::new()
                 .allow_methods([
                     axum::http::Method::GET,
                     axum::http::Method::POST,
+                    axum::http::Method::PUT,
+                    axum::http::Method::DELETE,
                     axum::http::Method::OPTIONS,
                 ])
                 .allow_headers(Any)
-                .max_age(std::time::Duration::from_secs(3600))
-        )
+                .max_age(std::time::Duration::from_secs(3600));
+
+            // Restrict CORS origins in production via env var
+            // Example: BIZCLAW_CORS_ORIGINS=https://bizclaw.vn,https://sales.bizclaw.vn
+            if let Ok(origins_str) = std::env::var("BIZCLAW_CORS_ORIGINS") {
+                let origins: Vec<_> = origins_str.split(',')
+                    .filter_map(|s| s.trim().parse::<axum::http::HeaderValue>().ok())
+                    .collect();
+                cors.allow_origin(origins)
+            } else {
+                // Development fallback — allow all origins
+                cors.allow_origin(Any)
+            }
+        })
         .layer(TraceLayer::new_for_http())
         .with_state(shared)
 }

@@ -40,7 +40,7 @@ struct Cli {
     #[arg(long, default_value = "~/.bizclaw/platform.db")]
     db_path: String,
 
-    /// JWT secret
+    /// JWT secret (recommended: set JWT_SECRET env var)
     #[arg(long, default_value = "bizclaw-platform-secret-2026")]
     jwt_secret: String,
 
@@ -128,11 +128,19 @@ async fn main() -> Result<()> {
         println!("   ⚠️  Change this password after first login!\n");
     }
 
+    // Prefer JWT_SECRET env var over CLI default
+    let jwt_secret = std::env::var("JWT_SECRET").unwrap_or(cli.jwt_secret.clone());
+
+    // Warn if using default JWT secret
+    if jwt_secret == "bizclaw-platform-secret-2026" {
+        tracing::warn!("⚠️  Using DEFAULT JWT secret! Set JWT_SECRET env var for production.");
+    }
+
     // Build admin state
     let state = Arc::new(bizclaw_platform::admin::AdminState {
         db: Mutex::new(db),
         manager: Mutex::new(bizclaw_platform::TenantManager::new(&data_dir)),
-        jwt_secret: cli.jwt_secret.clone(),
+        jwt_secret,
         bizclaw_bin: cli.bizclaw_bin.clone(),
         base_port: cli.base_port,
         login_attempts: Mutex::new(std::collections::HashMap::new()),
