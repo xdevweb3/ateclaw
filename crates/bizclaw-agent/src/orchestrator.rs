@@ -12,6 +12,20 @@ use std::collections::HashMap;
 
 use crate::Agent;
 
+/// Safely truncate a string at a character boundary (UTF-8 safe).
+/// Avoids panic on Vietnamese/CJK multi-byte characters.
+fn safe_truncate(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    // Find the last char boundary at or before max_bytes
+    let mut end = max_bytes;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
 /// A named agent instance with metadata.
 pub struct NamedAgent {
     pub agent: Agent,
@@ -234,8 +248,8 @@ impl Orchestrator {
                 serde_json::json!({
                     "from": m.from,
                     "to": m.to,
-                    "content": &m.content[..m.content.len().min(200)],
-                    "response": m.response.as_ref().map(|r| &r[..r.len().min(200)]),
+                    "content": safe_truncate(&m.content, 200),
+                    "response": m.response.as_ref().map(|r| safe_truncate(r, 200)),
                     "timestamp": m.timestamp.to_rfc3339(),
                 })
             })

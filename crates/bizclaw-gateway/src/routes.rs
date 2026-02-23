@@ -6,6 +6,30 @@ use std::sync::Arc;
 use super::server::AppState;
 use super::db::GatewayDb;
 
+/// Safely truncate a string at a character boundary (UTF-8 safe).
+fn safe_truncate(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes { return s; }
+    let mut end = max_bytes;
+    while end > 0 && !s.is_char_boundary(end) { end -= 1; }
+    &s[..end]
+}
+
+/// Validate a name (agent, channel, etc.) — allow Unicode but reject dangerous chars.
+fn validate_name(name: &str) -> std::result::Result<(), String> {
+    if name.is_empty() { return Err("Name cannot be empty".into()); }
+    if name.len() > 100 { return Err("Name too long (max 100 chars)".into()); }
+    if name.contains("..") || name.contains('/') || name.contains('\\') {
+        return Err("Name contains invalid characters (path traversal)".into());
+    }
+    if name.contains('<') || name.contains('>') {
+        return Err("Name contains invalid characters (HTML)".into());
+    }
+    if name.contains('\0') {
+        return Err("Name contains null bytes".into());
+    }
+    Ok(())
+}
+
 /// Mask a secret string for display — show first 4 chars + •••
 fn mask_secret(s: &str) -> String {
     if s.is_empty() {
@@ -823,7 +847,7 @@ pub async fn webhook_inbound(
         return Json(serde_json::json!({"ok": false, "error": "'content' field required"}));
     }
 
-    tracing::info!("[webhook] {} → agent '{}': {}", sender, agent_name, &content[..content.len().min(100)]);
+    tracing::info!("[webhook] {} → agent '{}': {}", sender, agent_name, safe_truncate(&content, 100));
 
     // Route to agent
     let response = {
@@ -921,7 +945,7 @@ pub async fn spawn_telegram_polling(
                                     let sender = msg.sender_name.clone().unwrap_or_default();
                                     let text = msg.content.clone();
 
-                                    tracing::info!("[telegram] {} → agent '{}': {}", sender, agent_name_clone, &text[..text.len().min(100)]);
+                                    tracing::info!("[telegram] {} → agent '{}': {}", sender, agent_name_clone, safe_truncate(&text, 100));
                                     let _ = channel.send_typing(chat_id).await;
 
                                     // Route to agent
@@ -1011,7 +1035,7 @@ pub async fn spawn_discord_gateway(
             let text = msg.content.clone();
             let sender = msg.sender_name.clone().unwrap_or_default();
 
-            tracing::info!("[discord] {} → agent '{}': {}", sender, agent_name_clone, &text[..text.len().min(100)]);
+            tracing::info!("[discord] {} → agent '{}': {}", sender, agent_name_clone, safe_truncate(&text, 100));
 
             // Send typing indicator
             let _ = reply_client.send_typing_indicator(&channel_id).await;
@@ -2492,7 +2516,7 @@ pub async fn connect_telegram(
                                     let sender = msg.sender_name.clone().unwrap_or_default();
                                     let text = msg.content.clone();
 
-                                    tracing::info!("[telegram] {} → agent '{}': {}", sender, agent_name_clone, &text[..text.len().min(100)]);
+                                    tracing::info!("[telegram] {} → agent '{}': {}", sender, agent_name_clone, safe_truncate(&text, 100));
 
                                     // Send typing indicator
                                     let _ = channel.send_typing(chat_id).await;

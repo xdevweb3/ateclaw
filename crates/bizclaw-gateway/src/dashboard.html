@@ -1664,7 +1664,7 @@ async function showAddChannelModal() {
     const sel = document.getElementById('new-ch-agent');
     sel.innerHTML = '<option value="">(Không gán — chỉ gửi)</option>';
     (data.agents || []).forEach(a => {
-      sel.innerHTML += `<option value="${a.name}">🤖 ${a.name} (${a.role})</option>`;
+      sel.innerHTML += `<option value="${escapeHtml(a.name)}">🤖 ${escapeHtml(a.name)} (${escapeHtml(a.role)})</option>`;
     });
   } catch(e) {}
 }
@@ -1874,7 +1874,7 @@ async function loadSchedulerPage() {
     const select = document.getElementById('sched-agent');
     select.innerHTML = '<option value="">(Mặc định — Agent chính)</option>';
     (agentData.agents || []).forEach(a => {
-      select.innerHTML += `<option value="${a.name}">${a.name} (${a.provider}/${a.model})</option>`;
+      select.innerHTML += `<option value="${escapeHtml(a.name)}">${escapeHtml(a.name)} (${escapeHtml(a.provider)}/${escapeHtml(a.model)})</option>`;
     });
   } catch(e) {}
 
@@ -3713,6 +3713,12 @@ function fmtUptime(s) {
   if (s < 3600) return Math.floor(s/60) + 'm ' + (s%60) + 's';
   const h = Math.floor(s/3600), m = Math.floor((s%3600)/60);
   return h + 'h ' + m + 'm';
+}
+
+// SECURITY: HTML escape to prevent XSS via innerHTML (H3)
+function escapeHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/`/g,'&#96;');
 }
 
 function toast(msg) {

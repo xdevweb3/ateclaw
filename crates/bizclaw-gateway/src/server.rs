@@ -83,7 +83,7 @@ async fn require_pairing(
         .get("X-Pairing-Code")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
-    if from_header == expected {
+    if constant_time_eq(from_header, expected) {
         // Reset failures on success
         let mut failures = state.auth_failures.lock().await;
         *failures = (0, std::time::Instant::now());
@@ -94,7 +94,7 @@ async fn require_pairing(
     if let Some(query) = req.uri().query() {
         for pair in query.split('&') {
             if let Some(code) = pair.strip_prefix("code=") {
-                if code == expected {
+                if constant_time_eq(code, expected) {
                     return next.run(req).await;
                 }
             }
@@ -124,10 +124,36 @@ async fn verify_pairing(
 ) -> Json<serde_json::Value> {
     let code = body["code"].as_str().unwrap_or("");
     match &state.pairing_code {
-        Some(expected) if code == expected => Json(serde_json::json!({"ok": true})),
+        Some(expected) if constant_time_eq(code, expected) => Json(serde_json::json!({"ok": true})),
         Some(_) => Json(serde_json::json!({"ok": false, "error": "Invalid pairing code"})),
         None => Json(serde_json::json!({"ok": true})), // no code required
     }
+}
+
+/// Constant-time string comparison to prevent timing attacks (M3).
+fn constant_time_eq(a: &str, b: &str) -> bool {
+    if a.len() != b.len() { return false; }
+    a.bytes().zip(b.bytes()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+/// Security headers middleware — CSP, HSTS, XSS protection.
+async fn security_headers(
+    req: axum::http::Request<axum::body::Body>,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let mut response = next.run(req).await;
+    let headers = response.headers_mut();
+    headers.insert("X-Content-Type-Options", "nosniff".parse().unwrap());
+    headers.insert("X-Frame-Options", "DENY".parse().unwrap());
+    headers.insert("Referrer-Policy", "strict-origin-when-cross-origin".parse().unwrap());
+    headers.insert("X-XSS-Protection", "1; mode=block".parse().unwrap());
+    // HSTS — tell browsers to always use HTTPS (1 year)
+    headers.insert("Strict-Transport-Security", "max-age=31536000; includeSubDomains".parse().unwrap());
+    // CSP — restrict script/style sources
+    headers.insert("Content-Security-Policy",
+        "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; img-src 'self' data: https:; connect-src 'self' ws: wss:; frame-ancestors 'none'"
+        .parse().unwrap());
+    response
 }
 
 /// Build the Axum router with all routes.
@@ -323,6 +349,8 @@ pub fn build_router_from_arc(shared: Arc<AppState>) -> Router {
             }
         })
         .layer(TraceLayer::new_for_http())
+        // Security headers
+        .layer(axum::middleware::from_fn(security_headers))
         .with_state(shared)
 }
 
