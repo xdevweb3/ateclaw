@@ -1839,7 +1839,7 @@ function saveGroups() {
 }
 
 async function showCreateGroupForm() {
-  document.getElementById('group-create-form').style.display = '';
+  document.getElementById('group-create-overlay').style.display = 'flex';
   try {
     const res = await authFetch(API + '/api/v1/agents');
     const data = await res.json();
@@ -2023,17 +2023,20 @@ function onChatAgentChange() {
   }
 }
 
-async function sendGroupMessage() {
+async function sendGroupMessage(messageText) {
   if (_activeGroupIdx < 0) return;
-  const input = document.getElementById('group-chat-input');
-  const text = input.value.trim();
-  if (!text) return;
-  input.value = '';
+  let text = messageText;
+  if (!text) {
+    const input = document.getElementById('chat-input');
+    text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+  }
   
   const g = _groups[_activeGroupIdx];
   g.messages.push({ role: 'user', content: text, time: new Date().toISOString() });
   saveGroups();
-  renderGroupMessages();
+  renderGroupMessagesInChat();
   
   // Send to each agent sequentially
   for (const agentName of g.agents) {
@@ -2051,7 +2054,7 @@ Contribute your perspective briefly (2-3 sentences) based on your expertise.`;
     // Show typing
     g.messages.push({ role: 'system', content: `\ud83e\udd16 ${agentName} \u0111ang suy ngh\u0129...`, _temp: true });
     saveGroups();
-    renderGroupMessages();
+    renderGroupMessagesInChat();
     
     try {
       const res = await authFetch(API + `/api/v1/agents/${agentName}/chat`, {
@@ -2073,12 +2076,12 @@ Contribute your perspective briefly (2-3 sentences) based on your expertise.`;
       g.messages.push({ role: 'agent', agent: agentName, agent_role: 'assistant', content: '\u274c ' + e.message, time: new Date().toISOString() });
     }
     saveGroups();
-    renderGroupMessages();
+    renderGroupMessagesInChat();
   }
   
   g.messages.push({ role: 'system', content: '\u2014\u2014 T\u1ea5t c\u1ea3 agent \u0111\u00e3 tr\u1ea3 l\u1eddi \u2014\u2014' });
   saveGroups();
-  renderGroupMessages();
+  renderGroupMessagesInChat();
 }
 
 // ═══ KNOWLEDGE BASE ═══
@@ -2288,6 +2291,12 @@ function sendChat() {
   if (text === '/help') {
     addMsg('/help', 'user');
     addMsg(t('chat.help'), 'system');
+    return;
+  }
+
+  // Group chat mode — route to group messaging
+  if (_chatMode === 'group' && _activeGroupIdx >= 0) {
+    sendGroupMessage(text);
     return;
   }
 
