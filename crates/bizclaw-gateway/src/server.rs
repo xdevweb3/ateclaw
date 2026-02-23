@@ -116,6 +116,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/v1/providers", post(super::routes::create_provider))
         .route("/api/v1/providers/{name}", put(super::routes::update_provider))
         .route("/api/v1/providers/{name}", axum::routing::delete(super::routes::delete_provider))
+        .route("/api/v1/providers/{name}/models", get(super::routes::fetch_provider_models))
         .route("/api/v1/channels", get(super::routes::list_channels))
         .route(
             "/api/v1/channels/update",

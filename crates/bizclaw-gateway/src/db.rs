@@ -2,6 +2,10 @@
 //!
 //! Replaces flat-file storage (agents.json, agent-channels.json, hardcoded providers)
 //! with a proper SQLite database for reliable CRUD operations.
+//!
+//! Provider records are fully self-describing: they store base_url, chat_path,
+//! models_path, auth_style, env_keys, icon, label — so the dashboard and runtime
+//! can operate entirely from DB without any hardcoded metadata.
 
 use rusqlite::{Connection, params};
 use std::path::Path;
@@ -12,14 +16,20 @@ pub struct GatewayDb {
     conn: Mutex<Connection>,
 }
 
-/// Provider record.
+/// Provider record — fully self-describing, no hardcoded metadata needed.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Provider {
     pub name: String,
-    pub provider_type: String, // cloud, local
+    pub label: String,
+    pub icon: String,
+    pub provider_type: String,  // cloud, local, proxy
     pub api_key: String,
     pub base_url: String,
-    pub models: Vec<String>,
+    pub chat_path: String,
+    pub models_path: String,
+    pub auth_style: String,     // bearer, none
+    pub env_keys: Vec<String>,  // env var names for API key lookup
+    pub models: Vec<String>,    // cached/default model IDs
     pub is_active: bool,
     pub enabled: bool,
     pub created_at: String,
@@ -66,12 +76,20 @@ impl GatewayDb {
     /// Run schema migrations.
     fn migrate(&self) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| format!("Lock: {e}"))?;
+        
+        // Main tables
         conn.execute_batch("
             CREATE TABLE IF NOT EXISTS providers (
                 name TEXT PRIMARY KEY,
+                label TEXT DEFAULT '',
+                icon TEXT DEFAULT '🤖',
                 provider_type TEXT DEFAULT 'cloud',
                 api_key TEXT DEFAULT '',
                 base_url TEXT DEFAULT '',
+                chat_path TEXT DEFAULT '/chat/completions',
+                models_path TEXT DEFAULT '/models',
+                auth_style TEXT DEFAULT 'bearer',
+                env_keys_json TEXT DEFAULT '[]',
                 models_json TEXT DEFAULT '[]',
                 is_active INTEGER DEFAULT 0,
                 enabled INTEGER DEFAULT 1,
@@ -105,10 +123,29 @@ impl GatewayDb {
                 updated_at TEXT DEFAULT (datetime('now'))
             );
         ").map_err(|e| format!("Migration error: {e}"))?;
+        
+        // Migration: add new columns to existing providers table
+        // SQLite doesn't have IF NOT EXISTS for ALTER TABLE, so we check first
+        let has_label: bool = conn.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('providers') WHERE name='label'",
+            [], |r| r.get::<_, i64>(0),
+        ).unwrap_or(0) > 0;
+        
+        if !has_label {
+            conn.execute_batch("
+                ALTER TABLE providers ADD COLUMN label TEXT DEFAULT '';
+                ALTER TABLE providers ADD COLUMN icon TEXT DEFAULT '🤖';
+                ALTER TABLE providers ADD COLUMN chat_path TEXT DEFAULT '/chat/completions';
+                ALTER TABLE providers ADD COLUMN models_path TEXT DEFAULT '/models';
+                ALTER TABLE providers ADD COLUMN auth_style TEXT DEFAULT 'bearer';
+                ALTER TABLE providers ADD COLUMN env_keys_json TEXT DEFAULT '[]';
+            ").map_err(|e| format!("Migration add columns: {e}"))?;
+        }
+        
         Ok(())
     }
 
-    /// Seed default providers if table is empty.
+    /// Seed default providers if table is empty — fully self-describing records.
     fn seed_default_providers(&self) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| format!("Lock: {e}"))?;
         let count: i64 = conn.query_row(
@@ -117,21 +154,99 @@ impl GatewayDb {
         
         if count > 0 { return Ok(()); }
 
-        let defaults = vec![
-            ("openai", "cloud", r#"["gpt-4o","gpt-4o-mini","gpt-3.5-turbo","o1-mini","o3-mini"]"#),
-            ("anthropic", "cloud", r#"["claude-sonnet-4-20250514","claude-3.5-sonnet","claude-3-haiku"]"#),
-            ("gemini", "cloud", r#"["gemini-2.5-pro","gemini-2.5-flash","gemini-2.0-flash"]"#),
-            ("deepseek", "cloud", r#"["deepseek-chat","deepseek-reasoner"]"#),
-            ("groq", "cloud", r#"["llama-3.3-70b","mixtral-8x7b-32768"]"#),
-            ("ollama", "local", r#"["llama3.2","qwen3","phi-4","gemma2"]"#),
-            ("llamacpp", "local", r#"["server endpoint"]"#),
-            ("brain", "local", r#"["tinyllama-1.1b","phi-2","llama-3.2-1b"]"#),
+        // Each provider definition is fully self-describing:
+        // (name, label, icon, type, base_url, chat_path, models_path, auth_style, env_keys_json, models_json)
+        let defaults: Vec<(&str, &str, &str, &str, &str, &str, &str, &str, &str, &str)> = vec![
+            (
+                "openai", "OpenAI", "🤖", "cloud",
+                "https://api.openai.com/v1",
+                "/chat/completions", "/models", "bearer",
+                r#"["OPENAI_API_KEY"]"#,
+                r#"["gpt-4o","gpt-4o-mini","gpt-3.5-turbo","o1-mini","o3-mini"]"#,
+            ),
+            (
+                "anthropic", "Anthropic", "🧠", "cloud",
+                "https://api.anthropic.com/v1",
+                "/chat/completions", "/models", "bearer",
+                r#"["ANTHROPIC_API_KEY"]"#,
+                r#"["claude-sonnet-4-20250514","claude-3.5-sonnet","claude-3-haiku"]"#,
+            ),
+            (
+                "gemini", "Google Gemini", "💎", "cloud",
+                "https://generativelanguage.googleapis.com/v1beta/openai",
+                "/chat/completions", "/models", "bearer",
+                r#"["GEMINI_API_KEY","GOOGLE_API_KEY"]"#,
+                r#"["gemini-2.5-pro","gemini-2.5-flash","gemini-2.0-flash"]"#,
+            ),
+            (
+                "deepseek", "DeepSeek", "🌊", "cloud",
+                "https://api.deepseek.com",
+                "/chat/completions", "/models", "bearer",
+                r#"["DEEPSEEK_API_KEY"]"#,
+                r#"["deepseek-chat","deepseek-reasoner"]"#,
+            ),
+            (
+                "groq", "Groq", "⚡", "cloud",
+                "https://api.groq.com/openai/v1",
+                "/chat/completions", "/models", "bearer",
+                r#"["GROQ_API_KEY"]"#,
+                r#"["llama-3.3-70b-versatile","mixtral-8x7b-32768","llama-3.1-8b-instant"]"#,
+            ),
+            (
+                "openrouter", "OpenRouter", "🌐", "cloud",
+                "https://openrouter.ai/api/v1",
+                "/chat/completions", "/models", "bearer",
+                r#"["OPENROUTER_API_KEY","OPENAI_API_KEY"]"#,
+                r#"["openai/gpt-4o","anthropic/claude-sonnet-4-20250514"]"#,
+            ),
+            (
+                "together", "Together AI", "🤝", "cloud",
+                "https://api.together.xyz/v1",
+                "/chat/completions", "/models", "bearer",
+                r#"["TOGETHER_API_KEY"]"#,
+                r#"["meta-llama/Llama-3.3-70B-Instruct-Turbo"]"#,
+            ),
+            (
+                "ollama", "Ollama (Local)", "🦙", "local",
+                "http://localhost:11434/v1",
+                "/chat/completions", "/models", "none",
+                r#"[]"#,
+                r#"["llama3.2","qwen3","phi-4","gemma2"]"#,
+            ),
+            (
+                "llamacpp", "llama.cpp", "🔧", "local",
+                "http://localhost:8080/v1",
+                "/chat/completions", "/models", "none",
+                r#"[]"#,
+                r#"["local-model"]"#,
+            ),
+            (
+                "brain", "Brain Engine", "🧲", "local",
+                "",
+                "", "", "none",
+                r#"[]"#,
+                r#"["tinyllama-1.1b","phi-2","llama-3.2-1b"]"#,
+            ),
+            (
+                "cliproxy", "CLIProxyAPI", "🔌", "proxy",
+                "http://localhost:8888/v1",
+                "/chat/completions", "/models", "bearer",
+                r#"["CLIPROXY_API_KEY"]"#,
+                r#"["default"]"#,
+            ),
+            (
+                "vllm", "vLLM", "🚀", "local",
+                "http://localhost:8000/v1",
+                "/chat/completions", "/models", "none",
+                r#"["VLLM_API_KEY"]"#,
+                r#"["default"]"#,
+            ),
         ];
 
-        for (name, ptype, models) in defaults {
+        for (name, label, icon, ptype, base_url, chat_path, models_path, auth_style, env_keys, models) in defaults {
             conn.execute(
-                "INSERT OR IGNORE INTO providers (name, provider_type, models_json) VALUES (?1, ?2, ?3)",
-                params![name, ptype, models],
+                "INSERT OR IGNORE INTO providers (name, label, icon, provider_type, base_url, chat_path, models_path, auth_style, env_keys_json, models_json) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                params![name, label, icon, ptype, base_url, chat_path, models_path, auth_style, env_keys, models],
             ).ok();
         }
         Ok(())
@@ -143,23 +258,31 @@ impl GatewayDb {
     pub fn list_providers(&self, active_provider: &str) -> Result<Vec<Provider>, String> {
         let conn = self.conn.lock().map_err(|e| format!("Lock: {e}"))?;
         let mut stmt = conn.prepare(
-            "SELECT name, provider_type, api_key, base_url, models_json, is_active, enabled, created_at, updated_at FROM providers ORDER BY name"
+            "SELECT name, label, icon, provider_type, api_key, base_url, chat_path, models_path, auth_style, env_keys_json, models_json, is_active, enabled, created_at, updated_at FROM providers ORDER BY name"
         ).map_err(|e| format!("Prepare: {e}"))?;
 
         let providers = stmt.query_map([], |row| {
             let name: String = row.get(0)?;
-            let models_json: String = row.get(4)?;
+            let models_json: String = row.get(10)?;
             let models: Vec<String> = serde_json::from_str(&models_json).unwrap_or_default();
+            let env_keys_json: String = row.get(9)?;
+            let env_keys: Vec<String> = serde_json::from_str(&env_keys_json).unwrap_or_default();
             Ok(Provider {
                 name: name.clone(),
-                provider_type: row.get(1)?,
-                api_key: row.get(2)?,
-                base_url: row.get(3)?,
+                label: row.get(1)?,
+                icon: row.get(2)?,
+                provider_type: row.get(3)?,
+                api_key: row.get(4)?,
+                base_url: row.get(5)?,
+                chat_path: row.get(6)?,
+                models_path: row.get(7)?,
+                auth_style: row.get(8)?,
+                env_keys,
                 models,
                 is_active: name == active_provider, // derive from runtime config
-                enabled: row.get::<_, i32>(6)? != 0,
-                created_at: row.get(7)?,
-                updated_at: row.get(8)?,
+                enabled: row.get::<_, i32>(12)? != 0,
+                created_at: row.get(13)?,
+                updated_at: row.get(14)?,
             })
         }).map_err(|e| format!("Query: {e}"))?
         .filter_map(|r| r.ok())
@@ -172,20 +295,28 @@ impl GatewayDb {
     pub fn upsert_provider(
         &self,
         name: &str,
+        label: &str,
+        icon: &str,
         provider_type: &str,
         api_key: &str,
         base_url: &str,
+        chat_path: &str,
+        models_path: &str,
+        auth_style: &str,
+        env_keys: &[String],
         models: &[String],
     ) -> Result<Provider, String> {
         let conn = self.conn.lock().map_err(|e| format!("Lock: {e}"))?;
         let models_json = serde_json::to_string(models).unwrap_or_else(|_| "[]".to_string());
+        let env_keys_json = serde_json::to_string(env_keys).unwrap_or_else(|_| "[]".to_string());
         
         conn.execute(
-            "INSERT INTO providers (name, provider_type, api_key, base_url, models_json, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'))
+            "INSERT INTO providers (name, label, icon, provider_type, api_key, base_url, chat_path, models_path, auth_style, env_keys_json, models_json, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, datetime('now'))
              ON CONFLICT(name) DO UPDATE SET
-               provider_type=?2, api_key=?3, base_url=?4, models_json=?5, updated_at=datetime('now')",
-            params![name, provider_type, api_key, base_url, models_json],
+               label=?2, icon=?3, provider_type=?4, api_key=?5, base_url=?6, chat_path=?7,
+               models_path=?8, auth_style=?9, env_keys_json=?10, models_json=?11, updated_at=datetime('now')",
+            params![name, label, icon, provider_type, api_key, base_url, chat_path, models_path, auth_style, env_keys_json, models_json],
         ).map_err(|e| format!("Upsert provider: {e}"))?;
 
         self.get_provider(name)
@@ -195,21 +326,29 @@ impl GatewayDb {
     pub fn get_provider(&self, name: &str) -> Result<Provider, String> {
         let conn = self.conn.lock().map_err(|e| format!("Lock: {e}"))?;
         conn.query_row(
-            "SELECT name, provider_type, api_key, base_url, models_json, is_active, enabled, created_at, updated_at FROM providers WHERE name=?1",
+            "SELECT name, label, icon, provider_type, api_key, base_url, chat_path, models_path, auth_style, env_keys_json, models_json, is_active, enabled, created_at, updated_at FROM providers WHERE name=?1",
             params![name],
             |row| {
-                let models_json: String = row.get(4)?;
+                let models_json: String = row.get(10)?;
                 let models: Vec<String> = serde_json::from_str(&models_json).unwrap_or_default();
+                let env_keys_json: String = row.get(9)?;
+                let env_keys: Vec<String> = serde_json::from_str(&env_keys_json).unwrap_or_default();
                 Ok(Provider {
                     name: row.get(0)?,
-                    provider_type: row.get(1)?,
-                    api_key: row.get(2)?,
-                    base_url: row.get(3)?,
+                    label: row.get(1)?,
+                    icon: row.get(2)?,
+                    provider_type: row.get(3)?,
+                    api_key: row.get(4)?,
+                    base_url: row.get(5)?,
+                    chat_path: row.get(6)?,
+                    models_path: row.get(7)?,
+                    auth_style: row.get(8)?,
+                    env_keys,
                     models,
-                    is_active: row.get::<_, i32>(5)? != 0,
-                    enabled: row.get::<_, i32>(6)? != 0,
-                    created_at: row.get(7)?,
-                    updated_at: row.get(8)?,
+                    is_active: row.get::<_, i32>(11)? != 0,
+                    enabled: row.get::<_, i32>(12)? != 0,
+                    created_at: row.get(13)?,
+                    updated_at: row.get(14)?,
                 })
             },
         ).map_err(|e| format!("Get provider: {e}"))
@@ -243,6 +382,17 @@ impl GatewayDb {
                 params![url, name],
             ).map_err(|e| format!("Update base_url: {e}"))?;
         }
+        Ok(())
+    }
+
+    /// Update cached models list for a provider.
+    pub fn update_provider_models(&self, name: &str, models: &[String]) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock: {e}"))?;
+        let models_json = serde_json::to_string(models).unwrap_or_else(|_| "[]".to_string());
+        conn.execute(
+            "UPDATE providers SET models_json=?1, updated_at=datetime('now') WHERE name=?2",
+            params![models_json, name],
+        ).map_err(|e| format!("Update models: {e}"))?;
         Ok(())
     }
 
@@ -423,10 +573,14 @@ mod tests {
     fn test_default_providers_seeded() {
         let db = temp_db();
         let providers = db.list_providers("").unwrap();
-        assert!(providers.len() >= 8, "Should have at least 8 default providers");
+        assert!(providers.len() >= 8, "Should have at least 8 default providers, got {}", providers.len());
         
         let openai = providers.iter().find(|p| p.name == "openai").unwrap();
         assert_eq!(openai.provider_type, "cloud");
+        assert_eq!(openai.label, "OpenAI");
+        assert_eq!(openai.icon, "🤖");
+        assert_eq!(openai.auth_style, "bearer");
+        assert_eq!(openai.base_url, "https://api.openai.com/v1");
         assert!(openai.models.contains(&"gpt-4o".to_string()));
     }
 
@@ -436,10 +590,13 @@ mod tests {
         
         // Create custom provider
         let p = db.upsert_provider(
-            "my-local", "local", "", "http://localhost:11434",
-            &["my-model".to_string()],
+            "my-local", "My Local LLM", "🏠", "local",
+            "", "http://localhost:11434/v1",
+            "/chat/completions", "/models", "none",
+            &[], &["my-model".to_string()],
         ).unwrap();
         assert_eq!(p.name, "my-local");
+        assert_eq!(p.label, "My Local LLM");
         assert_eq!(p.provider_type, "local");
         
         // Update
@@ -450,6 +607,29 @@ mod tests {
         // Delete
         db.delete_provider("my-local").unwrap();
         assert!(db.get_provider("my-local").is_err());
+    }
+
+    #[test]
+    fn test_provider_extended_fields() {
+        let db = temp_db();
+        let openai = db.get_provider("openai").unwrap();
+        assert_eq!(openai.chat_path, "/chat/completions");
+        assert_eq!(openai.models_path, "/models");
+        assert_eq!(openai.auth_style, "bearer");
+        assert!(openai.env_keys.contains(&"OPENAI_API_KEY".to_string()));
+    }
+
+    #[test]
+    fn test_update_models_cache() {
+        let db = temp_db();
+        db.update_provider_models("openai", &[
+            "gpt-4o".to_string(),
+            "gpt-4o-mini".to_string(),
+            "o1-preview".to_string(),
+        ]).unwrap();
+        let p = db.get_provider("openai").unwrap();
+        assert_eq!(p.models.len(), 3);
+        assert!(p.models.contains(&"o1-preview".to_string()));
     }
 
     #[test]

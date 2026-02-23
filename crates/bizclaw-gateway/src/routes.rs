@@ -493,7 +493,7 @@ pub async fn update_channel(
     }
 }
 
-/// List available providers (from DB).
+/// List available providers (from DB) — fully self-describing, no hardcoded metadata.
 pub async fn list_providers(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
     let cfg = state.full_config.lock().unwrap();
     let active = cfg.default_provider.clone();
@@ -504,11 +504,17 @@ pub async fn list_providers(State(state): State<Arc<AppState>>) -> Json<serde_js
             let provider_json: Vec<serde_json::Value> = providers.iter().map(|p| {
                 serde_json::json!({
                     "name": p.name,
+                    "label": p.label,
+                    "icon": p.icon,
                     "type": p.provider_type,
                     "status": if p.is_active { "active" } else { "available" },
                     "models": p.models,
                     "api_key_set": !p.api_key.is_empty(),
                     "base_url": p.base_url,
+                    "chat_path": p.chat_path,
+                    "models_path": p.models_path,
+                    "auth_style": p.auth_style,
+                    "env_keys": p.env_keys,
                     "enabled": p.enabled,
                 })
             }).collect();
@@ -518,7 +524,7 @@ pub async fn list_providers(State(state): State<Arc<AppState>>) -> Json<serde_js
     }
 }
 
-/// Create or update a provider.
+/// Create or update a provider — accepts all self-describing fields.
 pub async fn create_provider(
     State(state): State<Arc<AppState>>,
     Json(body): Json<serde_json::Value>,
@@ -527,17 +533,31 @@ pub async fn create_provider(
     if name.is_empty() {
         return Json(serde_json::json!({"ok": false, "error": "Provider name is required"}));
     }
+    let label = body["label"].as_str().unwrap_or(name);
+    let icon = body["icon"].as_str().unwrap_or("🤖");
     let provider_type = body["type"].as_str().unwrap_or("cloud");
     let api_key = body["api_key"].as_str().unwrap_or("");
     let base_url = body["base_url"].as_str().unwrap_or("");
+    let chat_path = body["chat_path"].as_str().unwrap_or("/chat/completions");
+    let models_path = body["models_path"].as_str().unwrap_or("/models");
+    let auth_style = body["auth_style"].as_str().unwrap_or("bearer");
+    let env_keys: Vec<String> = body["env_keys"].as_array()
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
     let models: Vec<String> = body["models"].as_array()
         .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
         .unwrap_or_default();
 
-    match state.db.upsert_provider(name, provider_type, api_key, base_url, &models) {
+    match state.db.upsert_provider(
+        name, label, icon, provider_type, api_key, base_url,
+        chat_path, models_path, auth_style, &env_keys, &models,
+    ) {
         Ok(p) => Json(serde_json::json!({
             "ok": true,
-            "provider": {"name": p.name, "type": p.provider_type, "models": p.models},
+            "provider": {
+                "name": p.name, "label": p.label, "icon": p.icon,
+                "type": p.provider_type, "base_url": p.base_url, "models": p.models
+            },
         })),
         Err(e) => Json(serde_json::json!({"ok": false, "error": e})),
     }
@@ -566,6 +586,174 @@ pub async fn update_provider(
     match state.db.update_provider_config(&name, api_key, base_url) {
         Ok(()) => Json(serde_json::json!({"ok": true, "message": format!("Provider '{}' updated", name)})),
         Err(e) => Json(serde_json::json!({"ok": false, "error": e})),
+    }
+}
+
+/// Fetch live models from a provider's API endpoint.
+/// This calls the actual provider API (e.g., OpenAI /models, Ollama /api/tags)
+/// and caches the result in DB.
+pub async fn fetch_provider_models(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Path(name): axum::extract::Path<String>,
+) -> Json<serde_json::Value> {
+    // Get provider from DB
+    let provider = match state.db.get_provider(&name) {
+        Ok(p) => p,
+        Err(e) => return Json(serde_json::json!({"ok": false, "error": format!("Provider not found: {e}")})),
+    };
+
+    // Special case: Ollama uses /api/tags not /v1/models
+    if name == "ollama" {
+        let ollama_base = provider.base_url.replace("/v1", "");
+        let url = format!("{}/api/tags", ollama_base.trim_end_matches('/'));
+        match reqwest::Client::new()
+            .get(&url)
+            .timeout(std::time::Duration::from_secs(8))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                if let Ok(body) = resp.json::<serde_json::Value>().await {
+                    let models: Vec<String> = body["models"].as_array()
+                        .map(|arr| arr.iter().filter_map(|m| m["name"].as_str().map(String::from)).collect())
+                        .unwrap_or_default();
+                    // Cache in DB
+                    state.db.update_provider_models(&name, &models).ok();
+                    return Json(serde_json::json!({
+                        "ok": true,
+                        "provider": name,
+                        "models": models,
+                        "source": "live_api",
+                    }));
+                }
+            }
+            Ok(resp) => {
+                let status = resp.status();
+                return Json(serde_json::json!({
+                    "ok": false,
+                    "error": format!("Ollama returned HTTP {status}"),
+                    "models": provider.models,
+                    "source": "cached",
+                }));
+            }
+            Err(e) => {
+                return Json(serde_json::json!({
+                    "ok": false,
+                    "error": format!("Ollama not reachable: {e}"),
+                    "models": provider.models,
+                    "source": "cached",
+                }));
+            }
+        }
+    }
+
+    // Special case: Brain — scan filesystem for GGUF files
+    if name == "brain" {
+        let config_dir = state.config_path.parent().unwrap_or(std::path::Path::new("."));
+        let scan_dirs = vec![
+            config_dir.join("models"),
+            std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default())
+                .join(".bizclaw").join("models"),
+        ];
+        let mut models = Vec::new();
+        for dir in &scan_dirs {
+            if let Ok(entries) = std::fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if let Some(ext) = path.extension() {
+                        if ext == "gguf" || ext == "bin" {
+                            if let Some(name) = path.file_name() {
+                                models.push(name.to_string_lossy().to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if !models.is_empty() {
+            state.db.update_provider_models("brain", &models).ok();
+        }
+        return Json(serde_json::json!({
+            "ok": true,
+            "provider": "brain",
+            "models": models,
+            "source": "filesystem",
+        }));
+    }
+
+    // Generic OpenAI-compatible provider — call /models endpoint
+    if provider.base_url.is_empty() || provider.models_path.is_empty() {
+        return Json(serde_json::json!({
+            "ok": false,
+            "error": "Provider has no base_url or models_path configured",
+            "models": provider.models,
+            "source": "cached",
+        }));
+    }
+
+    let url = format!("{}{}", provider.base_url.trim_end_matches('/'), provider.models_path);
+    let client = reqwest::Client::new();
+    let mut req = client.get(&url).timeout(std::time::Duration::from_secs(10));
+
+    // Apply auth
+    let api_key = if !provider.api_key.is_empty() {
+        provider.api_key.clone()
+    } else {
+        // Try env vars
+        provider.env_keys.iter()
+            .find_map(|key| std::env::var(key).ok())
+            .unwrap_or_default()
+    };
+
+    if provider.auth_style == "bearer" && !api_key.is_empty() {
+        req = req.header("Authorization", format!("Bearer {}", api_key));
+    }
+
+    match req.send().await {
+        Ok(resp) if resp.status().is_success() => {
+            if let Ok(body) = resp.json::<serde_json::Value>().await {
+                let models: Vec<String> = body["data"].as_array()
+                    .map(|arr| arr.iter().filter_map(|m| m["id"].as_str().map(String::from)).collect())
+                    .unwrap_or_default();
+                if !models.is_empty() {
+                    // Cache in DB
+                    state.db.update_provider_models(&name, &models).ok();
+                }
+                let is_live = !models.is_empty();
+                let result_models = if is_live { models } else { provider.models };
+                Json(serde_json::json!({
+                    "ok": true,
+                    "provider": name,
+                    "models": result_models,
+                    "source": if is_live { "live_api" } else { "cached" },
+                }))
+            } else {
+                Json(serde_json::json!({
+                    "ok": false,
+                    "error": "Failed to parse models response",
+                    "models": provider.models,
+                    "source": "cached",
+                }))
+            }
+        }
+        Ok(resp) => {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            Json(serde_json::json!({
+                "ok": false,
+                "error": format!("API returned HTTP {status}: {}", text.chars().take(200).collect::<String>()),
+                "models": provider.models,
+                "source": "cached",
+            }))
+        }
+        Err(e) => {
+            Json(serde_json::json!({
+                "ok": false,
+                "error": format!("Connection failed: {e}"),
+                "models": provider.models,
+                "source": "cached",
+            }))
+        }
     }
 }
 
