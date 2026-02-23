@@ -103,21 +103,15 @@ pub struct Agent {
 impl Agent {
     /// Create a new agent from configuration (sync, no MCP).
     pub fn new(config: BizClawConfig) -> Result<Self> {
-        let t0 = std::time::Instant::now();
         let provider = bizclaw_providers::create_provider(&config)?;
-        tracing::info!("Agent::new — create_provider: {:?}", t0.elapsed());
         let memory = bizclaw_memory::create_memory(&config.memory)?;
-        tracing::info!("Agent::new — create_memory: {:?}", t0.elapsed());
         let tools = bizclaw_tools::ToolRegistry::with_defaults();
-        tracing::info!("Agent::new — with_defaults tools: {:?}", t0.elapsed());
         let security = bizclaw_security::DefaultSecurityPolicy::new(config.autonomy.clone());
 
         // 3-Tier Memory: assemble brain context from workspace files
         let brain_ws = bizclaw_memory::brain::BrainWorkspace::default();
         let _ = brain_ws.initialize(); // seed default files if missing
-        tracing::info!("Agent::new — brain init: {:?}", t0.elapsed());
         let brain_context = brain_ws.assemble_brain();
-        tracing::info!("Agent::new — brain assemble: {:?}", t0.elapsed());
         let daily_log = bizclaw_memory::brain::DailyLogManager::default();
 
         // Build system prompt: user config + brain workspace
