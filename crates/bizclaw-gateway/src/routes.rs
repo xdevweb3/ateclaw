@@ -865,8 +865,75 @@ pub async fn spawn_telegram_polling(
 /// Auto-connect all enabled channel instances on startup.
 /// Called from server::start() after AppState is built.
 pub async fn auto_connect_channels(state: Arc<AppState>) {
-    let instances = load_channel_instances(&state);
+    let mut instances = load_channel_instances(&state);
     let mut connected = 0;
+
+    // ── Fallback: if no telegram instances, check config.toml for bot_token ──
+    let has_telegram_instance = instances.iter().any(|i| i["channel_type"].as_str() == Some("telegram"));
+    if !has_telegram_instance {
+        // Extract telegram config data (owned) to avoid holding MutexGuard across await
+        let tg_data = {
+            let cfg = state.full_config.lock().unwrap();
+            cfg.channel.telegram.as_ref().and_then(|tg| {
+                if tg.enabled && !tg.bot_token.is_empty() {
+                    Some((tg.bot_token.clone(), tg.allowed_chat_ids.clone()))
+                } else { None }
+            })
+        }; // MutexGuard dropped here
+
+        if let Some((bot_token, chat_ids)) = tg_data {
+            // Find which agent to bind to — check agent-channels.json first
+            let mut target_agent = String::new();
+            let agent_channels_path = state.config_path.parent()
+                .unwrap_or(std::path::Path::new("."))
+                .join("agent-channels.json");
+            if agent_channels_path.exists() {
+                if let Ok(content) = std::fs::read_to_string(&agent_channels_path) {
+                    if let Ok(bindings) = serde_json::from_str::<serde_json::Value>(&content) {
+                        if let Some(obj) = bindings.as_object() {
+                            for (agent, channels) in obj {
+                                if let Some(arr) = channels.as_array() {
+                                    if arr.iter().any(|c| c.as_str() == Some("telegram")) {
+                                        target_agent = agent.clone();
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // Fallback: bind to first agent available
+            if target_agent.is_empty() {
+                let orch = state.orchestrator.lock().await;
+                let agents = orch.list_agents();
+                if let Some(first) = agents.first() {
+                    target_agent = first["name"].as_str().unwrap_or("").to_string();
+                }
+            }
+
+            if !target_agent.is_empty() {
+                let instance_id = format!("telegram_config_{}", chrono::Utc::now().timestamp());
+                let inst = serde_json::json!({
+                    "id": instance_id,
+                    "name": "Telegram Bot (auto)",
+                    "channel_type": "telegram",
+                    "enabled": true,
+                    "agent_name": target_agent,
+                    "config": {
+                        "bot_token": bot_token,
+                        "allowed_chat_ids": chat_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(", "),
+                    },
+                    "updated_at": chrono::Utc::now().to_rfc3339(),
+                });
+                instances.push(inst);
+                save_channel_instances(&state, &instances);
+                tracing::info!("[auto-connect] Migrated config.toml telegram → channel instance bound to '{}'", target_agent);
+            }
+        }
+    }
+
+    // ── Connect all enabled instances ──
     for inst in &instances {
         let enabled = inst["enabled"].as_bool().unwrap_or(false);
         if !enabled { continue; }

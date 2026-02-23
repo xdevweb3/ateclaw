@@ -1733,10 +1733,13 @@ function renderChannelInstances(instances) {
       </div>
       ${inst.agent_name ? `<div style="padding:4px 12px;font-size:11px;color:var(--accent2)">🤖 Agent: <b>${inst.agent_name}</b> (đang lắng nghe & trả lời)</div>` : '<div style="padding:4px 12px;font-size:11px;color:var(--text2)">📤 Chỉ gửi — chưa gán agent</div>'}
       <div class="ch-fields">
-        ${def.fields.filter(f=>f.type!=='info').map(f => {
+        ${def.fields.map(f => {
+          if (f.type === 'info') {
+            return `<label>${f.label}</label><input type="text" value="${f.value || ''}" readonly style="opacity:.7;cursor:default">`;
+          }
           const val = cfg[f.key] || '';
           const display = f.masked && val ? '••••••' : val;
-          return `<label>${f.label}</label><input type="${f.type}" id="inst-${inst.id}-${f.key}" value="${display}" placeholder="${f.placeholder}">`;
+          return `<label>${f.label}</label><input type="${f.type}" id="inst-${inst.id}-${f.key}" value="${display.replace(/"/g,'&quot;')}" placeholder="${f.placeholder}">`;
         }).join('')}
       </div>
       <div class="ch-actions" style="display:flex;gap:8px">
@@ -1749,11 +1752,22 @@ function renderChannelInstances(instances) {
 
 async function saveInstanceConfig(id, type, name) {
   const def = CHANNELS.find(c => c.type === type) || {fields:[]};
-  const config = {};
+  // Fetch existing instance to preserve masked values
+  let existingConfig = {};
+  try {
+    const listRes = await authFetch(API + '/api/v1/channel-instances');
+    const listData = await listRes.json();
+    const existing = (listData.instances || []).find(i => i.id === id);
+    if (existing) existingConfig = existing.config || {};
+  } catch(e) {}
+  const config = { ...existingConfig }; // Start with existing
   def.fields.forEach(f => {
     if (f.type === 'info') return;
     const el = document.getElementById('inst-' + id + '-' + f.key);
-    if (el && el.value && !el.value.includes('••••')) config[f.key] = el.value;
+    if (el && el.value && !el.value.includes('••••')) {
+      config[f.key] = el.value; // Override with user's edit
+    }
+    // Masked unchanged → keep existing (already in config from spread)
   });
   try {
     const res = await authFetch(API + '/api/v1/channel-instances', {
@@ -1762,6 +1776,7 @@ async function saveInstanceConfig(id, type, name) {
     });
     const r = await res.json();
     toast(r.ok ? '✅ Đã lưu: ' + name : '❌ ' + r.error);
+    if (r.ok) loadChannelInstances(); // Reload to show saved values
   } catch(e) { toast('❌ ' + e.message); }
 }
 

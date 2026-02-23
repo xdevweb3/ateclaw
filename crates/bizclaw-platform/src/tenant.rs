@@ -365,12 +365,22 @@ port = {}
             std::fs::write(tenant_dir.join(".pairing_code"), code).ok();
         }
 
+        // Log file for debugging
+        let log_path = tenant_dir.join("gateway.log");
+        let log_file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log_path)
+            .ok();
+        let stdout = log_file.as_ref().map(|f| std::process::Stdio::from(f.try_clone().unwrap())).unwrap_or(std::process::Stdio::null());
+        let stderr = log_file.map(|f| std::process::Stdio::from(f)).unwrap_or(std::process::Stdio::null());
+
         let child = Command::new(bizclaw_bin)
             .args(["serve", "--port", &tenant.port.to_string()])
             .env("BIZCLAW_CONFIG", config_path.to_str().unwrap_or(""))
             .env("BIZCLAW_DATA_DIR", tenant_dir.to_str().unwrap_or(""))
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
+            .stdout(stdout)
+            .stderr(stderr)
             .spawn()
             .map_err(|e| BizClawError::provider(format!("Failed to start tenant: {e}")))?;
 
