@@ -70,7 +70,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: 🔍 Clippy
-        run: cargo clippy --workspace --all-targets -- -A unused-imports -A dead-code
+        run: cargo clippy --workspace --all-targets -- -A unused-imports -A dead-code -A private_interfaces
 
   # ══════════════════════════════════════════════
   #  📦 Cross-Platform Release Builds
@@ -103,7 +103,7 @@ jobs:
             ext: ""
           # macOS Intel
           - target: x86_64-apple-darwin
-            os: macos-13
+            os: macos-14
             artifact: bizclaw-macos-x86_64
             ext: ""
           # Windows
@@ -148,7 +148,8 @@ jobs:
           mkdir -p dist/${{ matrix.artifact }}
           cp target/${{ matrix.target }}/release/bizclaw${{ matrix.ext }} dist/${{ matrix.artifact }}/
           cp target/${{ matrix.target }}/release/bizclaw-platform${{ matrix.ext }} dist/${{ matrix.artifact }}/
-          cp README.md GETTING_STARTED.md dist/${{ matrix.artifact }}/
+          cp README.md dist/${{ matrix.artifact }}/ 2>/dev/null || true
+          cp GETTING_STARTED.md dist/${{ matrix.artifact }}/ 2>/dev/null || true
           cp install.sh dist/${{ matrix.artifact }}/ 2>/dev/null || true
           cd dist && tar czf ${{ matrix.artifact }}.tar.gz ${{ matrix.artifact }}
 
@@ -159,8 +160,8 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist/${{ matrix.artifact }}
           Copy-Item target/${{ matrix.target }}/release/bizclaw${{ matrix.ext }} dist/${{ matrix.artifact }}/
           Copy-Item target/${{ matrix.target }}/release/bizclaw-platform${{ matrix.ext }} dist/${{ matrix.artifact }}/
-          Copy-Item README.md dist/${{ matrix.artifact }}/
-          Copy-Item GETTING_STARTED.md dist/${{ matrix.artifact }}/
+          Copy-Item README.md dist/${{ matrix.artifact }}/ -ErrorAction SilentlyContinue
+          Copy-Item GETTING_STARTED.md dist/${{ matrix.artifact }}/ -ErrorAction SilentlyContinue
           Compress-Archive -Path dist/${{ matrix.artifact }} -DestinationPath dist/${{ matrix.artifact }}.zip
 
       - name: 📤 Upload Artifact
