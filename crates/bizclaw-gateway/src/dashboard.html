@@ -190,7 +190,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
         </div>
         <div id="onboard-step-2" style="display:none">
           <h2>⚡ Chọn AI Provider</h2>
-          <p style="color:var(--text-dim);margin:8px 0 20px" data-i18n="onboard.provider_sub">Chọn nguồn AI. Không cần API key? Dùng Ollama hoặc CLIProxyAPI.</p>
+          <p style="color:var(--text-dim);margin:8px 0 20px" data-i18n="onboard.provider_sub">Chọn nguồn AI. Không cần API key? Dùng Ollama hoặc Brain Engine.</p>
           <div class="form-row"><span class="form-label">Provider</span>
             <select id="onboard-provider" onchange="onboardProviderChange()">
               <option value="ollama">🖥️ Ollama (Local, miễn phí)</option>
@@ -203,7 +203,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
           <div id="onboard-cloud-fields" style="display:none">
             <div class="form-row"><span class="form-label">Model</span><input id="onboard-model" placeholder="gpt-4o-mini"></div>
             <div class="form-row"><span class="form-label">API Key</span><input id="onboard-apikey" type="password" placeholder="sk-..."></div>
-            <div class="form-row"><span class="form-label">API Base URL <span style="color:var(--text-dim)">(optional)</span></span><input id="onboard-baseurl" placeholder="http://localhost:8787/v1 (CLIProxyAPI)"></div>
+            <div class="form-row"><span class="form-label">API Base URL <span style="color:var(--text-dim)">(optional)</span></span><input id="onboard-baseurl" placeholder="https://api.openai.com/v1 (custom proxy)"></div>
           </div>
           <div id="onboard-ollama-info" class="card" style="background:var(--bg);margin-top:12px;padding:12px">
             <p>📥 <strong>Ollama</strong>: Chạy AI 100% local, không cần internet.</p>
@@ -315,7 +315,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
         <div id="provider-cloud-fields">
           <div class="form-row"><span class="form-label" data-i18n="set.model">Mô hình</span><input id="set-model" placeholder="gpt-4o-mini"></div>
           <div class="form-row"><span class="form-label" data-i18n="set.apikey">Khóa API</span><input id="set-apikey" type="password" placeholder="sk-..."></div>
-          <div class="form-row"><span class="form-label" data-i18n="set.baseurl">API Base URL</span><input id="set-baseurl" placeholder="http://localhost:8787/v1 (CLIProxyAPI, để trống = mặc định)"></div>
+          <div class="form-row"><span class="form-label" data-i18n="set.baseurl">API Base URL</span><input id="set-baseurl" placeholder="Custom API proxy URL (để trống = mặc định)"></div>
         </div>
         <!-- Ollama fields -->
         <div id="provider-ollama-fields" style="display:none">
@@ -1903,7 +1903,7 @@ const I18N = {
     'onboard.welcome_sub':'Hãy để AI tạo một trợ lý phù hợp riêng cho bạn. Chỉ mất 30 giây.',
     'onboard.your_name':'Tên bạn','onboard.about_you':'Bạn là ai, làm gì?',
     'onboard.agent_vibe':'Phong cách Agent',
-    'onboard.provider_sub':'Chọn nguồn AI. Không cần API key? Dùng Ollama hoặc CLIProxyAPI.',
+    'onboard.provider_sub':'Chọn nguồn AI. Không cần API key? Dùng Ollama hoặc Brain Engine.',
     'onboard.done_title':'Agent đã sẵn sàng!',
     'onboard.done_sub':'AI đang tạo tính cách riêng cho agent của bạn...',
     // Pairing
@@ -2002,7 +2002,7 @@ const I18N = {
     'onboard.welcome_sub':'Let AI create a personalized assistant just for you. Only takes 30 seconds.',
     'onboard.your_name':'Your Name','onboard.about_you':'Who are you, what do you do?',
     'onboard.agent_vibe':'Agent Personality',
-    'onboard.provider_sub':'Choose your AI source. No API key? Use Ollama or CLIProxyAPI.',
+    'onboard.provider_sub':'Choose your AI source. No API key? Use Ollama or Brain Engine.',
     'onboard.done_title':'Agent is Ready!',
     'onboard.done_sub':'AI is creating a unique personality for your agent...',
     // Pairing
