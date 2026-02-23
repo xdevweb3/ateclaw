@@ -122,13 +122,81 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
     <h1 style="margin-bottom:4px"><a href="#" onclick="showPage('tenants')" style="color:var(--muted);text-decoration:none">🏢 Tenants</a> / <span id="detail-tenant-name">—</span></h1>
     <div style="display:flex;gap:8px;margin-bottom:20px">
       <button class="btn btn-primary btn-sm detail-tab active" onclick="showDetailTab('overview',this)">📋 Overview</button>
-      <button class="btn btn-outline btn-sm detail-tab" onclick="showDetailTab('channels',this)">⚙️ Channels</button>
+      <button class="btn btn-outline btn-sm detail-tab" onclick="showDetailTab('settings',this)">⚙️ Settings</button>
+      <button class="btn btn-outline btn-sm detail-tab" onclick="showDetailTab('agents',this)">🤖 Agents</button>
+      <button class="btn btn-outline btn-sm detail-tab" onclick="showDetailTab('channels',this)">📱 Channels</button>
       <button class="btn btn-outline btn-sm detail-tab" onclick="showDetailTab('model',this)">🧠 Model</button>
     </div>
     <!-- Overview Tab -->
     <div id="detail-tab-overview">
       <div class="stats" id="detail-stats"></div>
       <div class="card" id="detail-info" style="margin-bottom:15px"></div>
+    </div>
+    <!-- Settings Tab -->
+    <div id="detail-tab-settings" class="hidden">
+      <div class="card" style="margin-bottom:15px">
+        <h3 style="margin-bottom:12px">⚙️ AI Provider & Model</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <label style="font-size:12px;color:var(--muted);margin-bottom:4px;display:block">Provider</label>
+            <select id="cfg-provider" style="width:100%;padding:8px 12px;background:var(--card);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:14px">
+              <option>openai</option><option>anthropic</option><option>ollama</option><option>gemini</option><option>deepseek</option><option>groq</option><option>brain</option><option>llamacpp</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--muted);margin-bottom:4px;display:block">Model</label>
+            <input id="cfg-model" placeholder="gpt-4o-mini" style="width:100%;padding:8px 12px;background:var(--card);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:14px">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
+          <div>
+            <label style="font-size:12px;color:var(--muted);margin-bottom:4px;display:block">API Key</label>
+            <input id="cfg-api-key" type="password" placeholder="sk-..." style="width:100%;padding:8px 12px;background:var(--card);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:14px">
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--muted);margin-bottom:4px;display:block">API Base URL</label>
+            <input id="cfg-api-url" placeholder="https://api.openai.com/v1" style="width:100%;padding:8px 12px;background:var(--card);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:14px">
+          </div>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:15px">
+        <h3 style="margin-bottom:12px">🎭 Identity</h3>
+        <label style="font-size:12px;color:var(--muted);margin-bottom:4px;display:block">Bot Name</label>
+        <input id="cfg-identity-name" placeholder="Sales AI" style="width:100%;padding:8px 12px;background:var(--card);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:14px;margin-bottom:10px">
+        <label style="font-size:12px;color:var(--muted);margin-bottom:4px;display:block">Persona</label>
+        <input id="cfg-identity-persona" placeholder="A helpful sales assistant" style="width:100%;padding:8px 12px;background:var(--card);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:14px;margin-bottom:10px">
+        <label style="font-size:12px;color:var(--muted);margin-bottom:4px;display:block">System Prompt</label>
+        <textarea id="cfg-identity-prompt" placeholder="You are a helpful AI assistant..." style="width:100%;padding:8px 12px;background:var(--card);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;font-family:monospace;min-height:100px;resize:vertical"></textarea>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" onclick="saveTenantConfig()">💾 Lưu Settings</button>
+        <span id="cfg-save-status" style="font-size:12px;color:var(--green);line-height:36px"></span>
+      </div>
+    </div>
+    <!-- Agents Tab -->
+    <div id="detail-tab-agents" class="hidden">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px">
+        <p style="font-size:12px;color:var(--muted)">Quản lý agents cho tenant này. Mỗi agent có provider, model và system prompt riêng.</p>
+        <button class="btn btn-primary btn-sm" onclick="showAddAgentForm()">+ Thêm Agent</button>
+      </div>
+      <div id="add-agent-form" class="card hidden" style="margin-bottom:15px">
+        <h3 style="margin-bottom:8px">🤖 New Agent</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+          <div><label style="font-size:11px;color:var(--muted)">Name</label><input id="ag-name" placeholder="sales-bot" style="width:100%;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:13px"></div>
+          <div><label style="font-size:11px;color:var(--muted)">Role</label><input id="ag-role" value="assistant" style="width:100%;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:13px"></div>
+          <div><label style="font-size:11px;color:var(--muted)">Provider</label><select id="ag-provider" style="width:100%;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:13px"><option>openai</option><option>anthropic</option><option>ollama</option><option>gemini</option><option>deepseek</option><option>groq</option><option>brain</option></select></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">
+          <div><label style="font-size:11px;color:var(--muted)">Model</label><input id="ag-model" placeholder="gpt-4o-mini" style="width:100%;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:13px"></div>
+          <div><label style="font-size:11px;color:var(--muted)">Description</label><input id="ag-desc" placeholder="Sales assistant" style="width:100%;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:13px"></div>
+        </div>
+        <div style="margin-top:8px"><label style="font-size:11px;color:var(--muted)">System Prompt</label><textarea id="ag-prompt" placeholder="You are..." style="width:100%;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:12px;font-family:monospace;min-height:60px"></textarea></div>
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <button class="btn btn-primary btn-sm" onclick="createTenantAgent()">💾 Tạo</button>
+          <button class="btn btn-outline btn-sm" onclick="document.getElementById('add-agent-form').classList.add('hidden')">Huỷ</button>
+        </div>
+      </div>
+      <div id="agents-list"></div>
     </div>
     <!-- Channels Tab -->
     <div id="detail-tab-channels" class="hidden">
@@ -498,17 +566,18 @@ function openTenantDetail(id, name, slug, provider, model, status, plan, pairing
 }
 
 function showDetailTab(tab, btn) {
-  ['overview','channels','model'].forEach(t => {
+  ['overview','settings','agents','channels','model'].forEach(t => {
     const el = document.getElementById('detail-tab-'+t);
     if(el) el.classList.toggle('hidden', t!==tab);
   });
   document.querySelectorAll('.detail-tab').forEach(b => {
-    b.className = `btn btn-${b.textContent.toLowerCase().includes(tab.slice(0,3))?'primary':'outline'} btn-sm detail-tab`;
+    b.className = 'btn btn-outline btn-sm detail-tab';
   });
   if(btn) {
-    document.querySelectorAll('.detail-tab').forEach(b => b.className = 'btn btn-outline btn-sm detail-tab');
     btn.className = 'btn btn-primary btn-sm detail-tab active';
   }
+  if(tab==='settings') loadTenantConfig();
+  if(tab==='agents') loadTenantAgents();
 }
 
 async function loadDetailChannels(tenantId) {
@@ -938,6 +1007,129 @@ async function ollamaDeleteModel(name){
     if(r.ok){toast(`✅ ${r.message}`);await ollamaListModels();}
     else{toast(`❌ ${r.error||'Delete failed'}`,'error');}
   }catch(e){toast('❌ '+e.message,'error');}
+}
+
+// ══════════════════════════════════════════════════
+// ── TENANT CONFIG (SETTINGS TAB) ──────────────
+// ══════════════════════════════════════════════════
+
+async function loadTenantConfig() {
+  try {
+    const r = await(await authFetch(`${API}/tenants/${detailTenantId}/configs`)).json();
+    if(r.ok && r.configs) {
+      const c = r.configs;
+      const setVal = (id, key) => { const el=document.getElementById(id); if(el) el.value=c[key]||''; };
+      setVal('cfg-provider','default_provider');
+      setVal('cfg-model','default_model');
+      setVal('cfg-api-key','api_key');
+      setVal('cfg-api-url','api_base_url');
+      setVal('cfg-identity-name','identity.name');
+      setVal('cfg-identity-persona','identity.persona');
+      setVal('cfg-identity-prompt','identity.system_prompt');
+      // Set select dropdown
+      const sel = document.getElementById('cfg-provider');
+      if(sel && c.default_provider) {
+        for(let i=0;i<sel.options.length;i++) {
+          if(sel.options[i].value===c.default_provider) { sel.selectedIndex=i; break; }
+        }
+      }
+    }
+  } catch(e) { console.error('Load config error:', e); }
+}
+
+async function saveTenantConfig() {
+  const configs = {
+    default_provider: document.getElementById('cfg-provider').value,
+    default_model: document.getElementById('cfg-model').value,
+    api_key: document.getElementById('cfg-api-key').value,
+    api_base_url: document.getElementById('cfg-api-url').value,
+    'identity.name': document.getElementById('cfg-identity-name').value,
+    'identity.persona': document.getElementById('cfg-identity-persona').value,
+    'identity.system_prompt': document.getElementById('cfg-identity-prompt').value,
+  };
+  try {
+    const r = await(await authFetch(`${API}/tenants/${detailTenantId}/configs`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({configs})
+    })).json();
+    if(r.ok) {
+      toast(`✅ Settings saved (${r.saved} keys)`);
+      document.getElementById('cfg-save-status').textContent = '✅ Saved!';
+      setTimeout(() => document.getElementById('cfg-save-status').textContent = '', 3000);
+    } else {
+      toast(r.error||'Save failed', 'error');
+    }
+  } catch(e) { toast('❌ '+e.message, 'error'); }
+}
+
+// ══════════════════════════════════════════════════
+// ── TENANT AGENTS (AGENTS TAB) ──────────────
+// ══════════════════════════════════════════════════
+
+function showAddAgentForm() {
+  document.getElementById('add-agent-form').classList.remove('hidden');
+  document.getElementById('ag-name').value = '';
+  document.getElementById('ag-role').value = 'assistant';
+  document.getElementById('ag-desc').value = '';
+  document.getElementById('ag-prompt').value = '';
+}
+
+async function loadTenantAgents() {
+  try {
+    const r = await(await authFetch(`${API}/tenants/${detailTenantId}/agents`)).json();
+    const list = document.getElementById('agents-list');
+    if(r.ok && r.agents && r.agents.length > 0) {
+      list.innerHTML = r.agents.map(a => `
+        <div class="card" style="margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <strong style="color:var(--accent)">${a.name}</strong>
+              <span class="badge running" style="margin-left:8px">${a.role}</span>
+              <span style="font-size:12px;color:var(--muted);margin-left:8px">${a.provider}/${a.model}</span>
+            </div>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-danger btn-sm" onclick="deleteTenantAgent('${esc(a.name)}')">✕</button>
+            </div>
+          </div>
+          ${a.description ? `<div style="font-size:12px;color:var(--muted);margin-top:6px">${a.description}</div>` : ''}
+          ${a.system_prompt ? `<div style="font-size:11px;color:var(--muted);margin-top:4px;font-family:monospace;max-height:40px;overflow:hidden;text-overflow:ellipsis">📝 ${a.system_prompt.slice(0,120)}${a.system_prompt.length>120?'...':''}</div>` : ''}
+        </div>
+      `).join('');
+    } else {
+      list.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted)"><p>👻 Chưa có agent nào.</p><p style="font-size:12px;margin-top:4px">Nhấn "+ Thêm Agent" để tạo agent mới.</p></div>';
+    }
+  } catch(e) { console.error('Load agents error:', e); }
+}
+
+async function createTenantAgent() {
+  const body = {
+    name: document.getElementById('ag-name').value.trim(),
+    role: document.getElementById('ag-role').value.trim() || 'assistant',
+    description: document.getElementById('ag-desc').value.trim(),
+    provider: document.getElementById('ag-provider').value,
+    model: document.getElementById('ag-model').value.trim(),
+    system_prompt: document.getElementById('ag-prompt').value.trim(),
+  };
+  if(!body.name) { toast('Nhập tên agent', 'error'); return; }
+  try {
+    const r = await(await authFetch(`${API}/tenants/${detailTenantId}/agents`, {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+    })).json();
+    if(r.ok) {
+      toast(`✅ Agent "${body.name}" created!`);
+      document.getElementById('add-agent-form').classList.add('hidden');
+      loadTenantAgents();
+    } else { toast(r.error||'Create failed', 'error'); }
+  } catch(e) { toast('❌ '+e.message, 'error'); }
+}
+
+async function deleteTenantAgent(name) {
+  if(!confirm(`Xoá agent "${name}"?`)) return;
+  try {
+    const r = await(await authFetch(`${API}/tenants/${detailTenantId}/agents/${encodeURIComponent(name)}`, {method:'DELETE'})).json();
+    if(r.ok) { toast(`✅ Agent "${name}" deleted`); loadTenantAgents(); }
+    else { toast(r.error||'Delete failed', 'error'); }
+  } catch(e) { toast('❌ '+e.message, 'error'); }
 }
 
 // ── Init ──────────────────────────────────

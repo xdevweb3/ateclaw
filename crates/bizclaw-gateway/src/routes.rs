@@ -253,11 +253,39 @@ pub async fn update_config(
     // Save to disk
     let content = toml::to_string_pretty(&*cfg).unwrap_or_default();
     let new_cfg = cfg.clone();
+
+    // Build sync data for platform DB import
+    let sync_data = serde_json::json!({
+        "default_provider": new_cfg.default_provider,
+        "default_model": new_cfg.default_model,
+        "api_key": new_cfg.api_key,
+        "api_base_url": new_cfg.api_base_url,
+        "identity.name": new_cfg.identity.name,
+        "identity.persona": new_cfg.identity.persona,
+        "identity.system_prompt": new_cfg.identity.system_prompt,
+        "brain.enabled": new_cfg.brain.enabled,
+        "brain.model_path": new_cfg.brain.model_path,
+        "brain.threads": new_cfg.brain.threads,
+        "brain.max_tokens": new_cfg.brain.max_tokens,
+        "brain.context_length": new_cfg.brain.context_length,
+        "brain.temperature": new_cfg.brain.temperature,
+        "updated_at": chrono::Utc::now().to_rfc3339(),
+    });
+
     drop(cfg); // Release lock before file write + agent reinit
 
     match std::fs::write(&state.config_path, &content) {
         Ok(_) => {
             tracing::info!("✅ Config saved to {}", state.config_path.display());
+
+            // Write config_sync.json for platform DB import
+            if let Some(parent) = state.config_path.parent() {
+                let sync_path = parent.join("config_sync.json");
+                if let Ok(json) = serde_json::to_string_pretty(&sync_data) {
+                    std::fs::write(&sync_path, json).ok();
+                    tracing::info!("📋 Config sync file written to {}", sync_path.display());
+                }
+            }
 
             // Re-initialize Agent with new config (async, don't block response)
             let agent_lock = state.agent.clone();

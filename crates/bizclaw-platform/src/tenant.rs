@@ -45,6 +45,33 @@ impl TenantManager {
         let tenant_dir = self.data_dir.join(&tenant.slug);
         std::fs::create_dir_all(&tenant_dir).ok();
 
+        // ── Import config_sync.json if gateway dashboard saved changes ──
+        let sync_path = tenant_dir.join("config_sync.json");
+        if sync_path.exists() {
+            tracing::info!("📥 Importing config_sync.json for tenant {}", tenant.slug);
+            if let Ok(content) = std::fs::read_to_string(&sync_path) {
+                if let Ok(sync_data) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if let Some(obj) = sync_data.as_object() {
+                        for (key, value) in obj {
+                            if key == "updated_at" { continue; }
+                            let val_str = match value {
+                                serde_json::Value::String(s) => s.clone(),
+                                serde_json::Value::Bool(b) => b.to_string(),
+                                serde_json::Value::Number(n) => n.to_string(),
+                                other => other.to_string(),
+                            };
+                            if !val_str.is_empty() {
+                                db.set_config(&tenant.id, key, &val_str).ok();
+                            }
+                        }
+                        tracing::info!("  ✅ Imported {} config keys into DB", obj.len() - 1);
+                    }
+                }
+            }
+            // Remove sync file after import
+            std::fs::remove_file(&sync_path).ok();
+        }
+
         // ── Generate config.toml from DB (always regenerate) ──────────
         let config_path = tenant_dir.join("config.toml");
         tracing::info!("📝 Generating config.toml for tenant {} from DB", tenant.slug);
@@ -192,6 +219,36 @@ port = {}
         }
 
         std::fs::write(&config_path, &config_content).ok();
+
+        // ── Import existing agents.json into DB if needed ──────────
+        let agents_file = tenant_dir.join("agents.json");
+        if agents_file.exists() {
+            if let Ok(content) = std::fs::read_to_string(&agents_file) {
+                if let Ok(agents_arr) = serde_json::from_str::<Vec<serde_json::Value>>(&content) {
+                    let db_agents = db.list_agents(&tenant.id).unwrap_or_default();
+                    let db_names: Vec<String> = db_agents.iter().map(|a| a.name.clone()).collect();
+                    let mut imported = 0;
+                    for meta in &agents_arr {
+                        let name = meta["name"].as_str().unwrap_or("agent");
+                        if !db_names.contains(&name.to_string()) {
+                            db.upsert_agent(
+                                &tenant.id,
+                                name,
+                                meta["role"].as_str().unwrap_or("assistant"),
+                                meta["description"].as_str().unwrap_or(""),
+                                meta["provider"].as_str().unwrap_or(&tenant.provider),
+                                meta["model"].as_str().unwrap_or(&tenant.model),
+                                meta["system_prompt"].as_str().unwrap_or(""),
+                            ).ok();
+                            imported += 1;
+                        }
+                    }
+                    if imported > 0 {
+                        tracing::info!("  📥 Imported {} agent(s) from agents.json into DB", imported);
+                    }
+                }
+            }
+        }
 
         // ── Generate agents.json from DB ──────────
         if let Ok(agents) = db.list_agents(&tenant.id) {
