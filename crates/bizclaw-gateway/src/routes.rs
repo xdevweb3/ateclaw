@@ -754,6 +754,93 @@ pub async fn delete_channel_instance(
     Json(serde_json::json!({"ok": true, "message": "Instance deleted"}))
 }
 
+/// Webhook inbound — receives external messages, routes to bound agent, replies.
+/// POST /api/v1/webhook/inbound
+/// Body: {"content": "message", "sender_id": "user1", "thread_id": "optional"}
+/// Header: X-Webhook-Signature (optional HMAC-SHA256)
+pub async fn webhook_inbound(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+    body: String,
+) -> Json<serde_json::Value> {
+    // Find webhook channel instance bound to an agent
+    let instances = load_channel_instances(&state);
+    let webhook_instance = instances.iter().find(|i| {
+        i["channel_type"].as_str() == Some("webhook")
+            && i["enabled"].as_bool() == Some(true)
+            && !i["agent_name"].as_str().unwrap_or("").is_empty()
+    });
+
+    let (agent_name, outbound_url, secret) = match webhook_instance {
+        Some(inst) => {
+            let agent = inst["agent_name"].as_str().unwrap_or("").to_string();
+            let outbound = inst["config"]["webhook_url"].as_str().unwrap_or("").to_string();
+            let sec = inst["config"]["webhook_secret"].as_str().unwrap_or("").to_string();
+            (agent, outbound, sec)
+        }
+        None => {
+            return Json(serde_json::json!({
+                "ok": false,
+                "error": "No webhook channel bound to an agent. Create one in Dashboard → Channels."
+            }));
+        }
+    };
+
+    // Verify signature if secret configured
+    if !secret.is_empty() {
+        let sig = headers.get("x-webhook-signature").and_then(|v| v.to_str().ok()).unwrap_or("");
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(format!("{secret}{body}"));
+        let expected = format!("{:x}", hasher.finalize());
+        if expected != sig {
+            return Json(serde_json::json!({"ok": false, "error": "Invalid webhook signature"}));
+        }
+    }
+
+    // Parse message
+    let json: serde_json::Value = match serde_json::from_str(&body) {
+        Ok(v) => v,
+        Err(e) => return Json(serde_json::json!({"ok": false, "error": format!("Invalid JSON: {e}")})),
+    };
+    let content = json["content"].as_str().unwrap_or("").to_string();
+    let sender = json["sender_id"].as_str().unwrap_or("webhook-user").to_string();
+    if content.is_empty() {
+        return Json(serde_json::json!({"ok": false, "error": "'content' field required"}));
+    }
+
+    tracing::info!("[webhook] {} → agent '{}': {}", sender, agent_name, &content[..content.len().min(100)]);
+
+    // Route to agent
+    let response = {
+        let mut orch = state.orchestrator.lock().await;
+        match orch.send_to(&agent_name, &content).await {
+            Ok(r) => r,
+            Err(e) => format!("⚠️ Agent error: {e}"),
+        }
+    };
+
+    // Also forward reply to outbound URL if configured
+    if !outbound_url.is_empty() {
+        let reply_body = serde_json::json!({
+            "content": response,
+            "sender_id": agent_name,
+            "thread_id": json["thread_id"].as_str().unwrap_or("webhook"),
+            "in_reply_to": content,
+        });
+        let client = reqwest::Client::new();
+        if let Err(e) = client.post(&outbound_url).json(&reply_body).send().await {
+            tracing::error!("[webhook] Outbound forward failed: {e}");
+        }
+    }
+
+    Json(serde_json::json!({
+        "ok": true,
+        "response": response,
+        "agent": agent_name,
+    }))
+}
+
 /// Spawn a Telegram polling loop that routes messages to a specific agent.
 /// Reused by both save_channel_instance (manual) and auto_connect_channels (startup).
 pub async fn spawn_telegram_polling(
@@ -862,6 +949,77 @@ pub async fn spawn_telegram_polling(
     }
 }
 
+/// Spawn a Discord Gateway listener that routes messages to a specific agent.
+pub async fn spawn_discord_gateway(
+    state: Arc<AppState>,
+    agent_name: String,
+    bot_token: String,
+    instance_id: String,
+) {
+    use futures::StreamExt;
+
+    let discord = bizclaw_channels::discord::DiscordChannel::new(
+        bizclaw_channels::discord::DiscordConfig {
+            bot_token: bot_token.clone(),
+            enabled: true,
+            intents: 33281, // GUILDS | GUILD_MESSAGES | MESSAGE_CONTENT
+        },
+    );
+
+    // Verify bot token
+    match discord.get_me().await {
+        Ok(me) => {
+            tracing::info!("[discord] Bot {} connected → agent '{}' (instance: {})",
+                me.username, agent_name, instance_id);
+        }
+        Err(e) => {
+            tracing::error!("[discord] Bot token invalid for instance '{}': {}", instance_id, e);
+            return;
+        }
+    }
+
+    let gateway = discord.start_gateway();
+    let state_clone = state.clone();
+    let agent_name_clone = agent_name.clone();
+
+    tokio::spawn(async move {
+        let mut stream = gateway;
+        let reply_client = bizclaw_channels::discord::DiscordChannel::new(
+            bizclaw_channels::discord::DiscordConfig {
+                bot_token: bot_token.clone(),
+                enabled: true,
+                intents: 33281,
+            },
+        );
+
+        while let Some(msg) = stream.next().await {
+            let channel_id = msg.thread_id.clone();
+            let text = msg.content.clone();
+            let sender = msg.sender_name.clone().unwrap_or_default();
+
+            tracing::info!("[discord] {} → agent '{}': {}", sender, agent_name_clone, &text[..text.len().min(100)]);
+
+            // Send typing indicator
+            let _ = reply_client.send_typing_indicator(&channel_id).await;
+
+            // Route to agent
+            let response = {
+                let mut orch = state_clone.orchestrator.lock().await;
+                match orch.send_to(&agent_name_clone, &text).await {
+                    Ok(r) => r,
+                    Err(e) => format!("⚠️ Agent error: {e}"),
+                }
+            };
+
+            // Reply via Discord
+            if let Err(e) = reply_client.send_message(&channel_id, &response).await {
+                tracing::error!("[discord] Reply failed: {e}");
+            }
+        }
+        tracing::warn!("[discord] Gateway stream ended for agent '{}'", agent_name_clone);
+    });
+}
+
 /// Auto-connect all enabled channel instances on startup.
 /// Called from server::start() after AppState is built.
 pub async fn auto_connect_channels(state: Arc<AppState>) {
@@ -955,7 +1113,25 @@ pub async fn auto_connect_channels(state: Arc<AppState>) {
                     connected += 1;
                 }
             }
-            // Future: handle webhook, discord, etc.
+            "discord" if !agent_name.is_empty() => {
+                let bot_token = cfg["bot_token"].as_str().unwrap_or("").to_string();
+                if !bot_token.is_empty() {
+                    let s = state.clone();
+                    let an = agent_name.to_string();
+                    let iid = instance_id.to_string();
+                    tokio::spawn(async move {
+                        spawn_discord_gateway(s, an, bot_token, iid).await;
+                    });
+                    connected += 1;
+                }
+            }
+            "webhook" if !agent_name.is_empty() => {
+                // Webhook is passive — inbound via /api/v1/webhook/inbound
+                // No polling needed, just log that it's ready
+                tracing::info!("[webhook] Instance '{}' bound to agent '{}' — ready for inbound at /api/v1/webhook/inbound",
+                    inst["name"].as_str().unwrap_or(instance_id), agent_name);
+                connected += 1;
+            }
             _ => {}
         }
     }
@@ -1548,9 +1724,8 @@ pub async fn whatsapp_webhook(
 
 /// Generic webhook inbound handler (POST).
 /// Receives messages from external systems (Zapier, n8n, custom apps).
-/// Expected JSON body: {"content": "...", "sender_id": "...", "thread_id": "...", "sender_name": "..."}
-/// Optional header: X-Webhook-Signature (HMAC-SHA256 of body using shared secret)
-pub async fn webhook_inbound(
+/// LEGACY — replaced by new webhook_inbound at line ~761 that routes through channel_instances.
+pub async fn _webhook_inbound_legacy(
     State(state): State<Arc<AppState>>,
     headers: axum::http::HeaderMap,
     body: String,
