@@ -621,23 +621,12 @@ tr:hover td{background:rgba(255,255,255,.02)}
             <div class="form-row"><span class="form-label">Nhà cung cấp</span><select id="edit-agent-provider" onchange="loadAgentModels(this.value,'edit-agent-model')"><option value="">— Giữ nguyên —</option></select></div>
             <div class="form-row"><span class="form-label">Mô hình AI</span><select id="edit-agent-model"><option value="">— Giữ nguyên —</option></select></div>
             <div class="form-row"><span class="form-label" data-i18n="set.sysprompt">System Prompt</span><textarea id="edit-agent-prompt" placeholder="Lời nhắc hệ thống cho agent..." style="min-height:100px;font-size:12px"></textarea></div>
-            <!-- Channel Binding + Telegram: 2-column layout -->
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
-              <!-- Channel Binding Section -->
+            <!-- Channel Binding Section (full width - no Telegram duplicate) -->
+            <div style="margin-top:12px">
               <div style="padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--bg)">
                 <div style="font-weight:600;margin-bottom:6px;font-size:13px">🔗 Gán Agent với Kênh</div>
-                <div style="font-size:10px;color:var(--text2);margin-bottom:8px">Chọn kênh mà agent sẽ xử lý tin nhắn.</div>
+                <div style="font-size:10px;color:var(--text2);margin-bottom:8px">Chọn kênh mà agent sẽ xử lý tin nhắn. Cấu hình kênh (Bot Token, API Key...) ở trang <a href="/channels" onclick="navigateTo(event,'channels');document.getElementById('agent-edit-modal').style.display='none'" style="color:var(--accent)">📱 Kênh</a>.</div>
                 <div id="edit-agent-channels" style="display:flex;flex-direction:column;gap:6px"></div>
-              </div>
-              <!-- Telegram Bot Section -->
-              <div style="padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--bg)">
-                <div style="font-weight:600;margin-bottom:6px;font-size:13px">🤖 Telegram Bot</div>
-                <div id="telegram-status" style="font-size:11px;color:var(--text2);margin-bottom:8px"></div>
-                <div class="form-row" style="margin-bottom:8px"><span class="form-label" style="font-size:11px">Bot Token</span><input id="edit-agent-tg-token" type="password" placeholder="123456:ABC-DEF..." style="font-size:11px"></div>
-                <div style="display:flex;flex-direction:column;gap:6px">
-                  <button class="btn btn-primary btn-sm" onclick="connectTelegramBot()" style="font-size:11px;width:100%">🔗 Kết nối Telegram</button>
-                  <button class="btn btn-outline btn-sm" onclick="disconnectTelegramBot()" style="font-size:11px;color:var(--red);width:100%">⛔ Ngắt kết nối</button>
-                </div>
               </div>
             </div>
           </div>
@@ -2271,8 +2260,6 @@ async function editAgent(name) {
   }).join('');
   // Load instances for checked channels
   agentChannels.forEach(chType => loadChannelInstances(chType));
-  // Load telegram status
-  loadTelegramStatus(name);
 }
 
 // Show/hide channel instances when checkbox toggled
@@ -2371,64 +2358,6 @@ function loadChannelInstances(chType) {
   container.innerHTML = html;
 }
 
-async function loadTelegramStatus(name) {
-  const el = document.getElementById('telegram-status');
-  el.innerHTML = '<span style="color:var(--text2)">Đang kiểm tra...</span>';
-  try {
-    const res = await authFetch(API + '/api/v1/agents/' + encodeURIComponent(name) + '/telegram');
-    const r = await res.json();
-    if (r.connected) {
-      el.innerHTML = '🟢 <strong>Đang kết nối:</strong> @' + r.bot_username + ' — tin nhắn Telegram sẽ tự động được gửi tới agent này';
-    } else {
-      el.innerHTML = '⚪ Chưa kết nối Telegram Bot. Nhập Bot Token và bấm Kết nối.';
-    }
-  } catch(e) { el.innerHTML = '⚠️ Không thể kiểm tra: ' + e.message; }
-}
-
-async function connectTelegramBot() {
-  const name = document.getElementById('edit-agent-name-hidden').value;
-  const token = document.getElementById('edit-agent-tg-token').value.trim();
-  if (!token) { toast('❌ Nhập Bot Token từ @BotFather'); return; }
-  
-  const el = document.getElementById('telegram-status');
-  el.innerHTML = '🔄 Đang kết nối...';
-  
-  try {
-    const res = await authFetch(API + '/api/v1/agents/' + encodeURIComponent(name) + '/telegram', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ bot_token: token })
-    });
-    const r = await res.json();
-    if (r.ok) {
-      toast('✅ @' + r.bot_username + ' đã kết nối với agent "' + name + '"!');
-      el.innerHTML = '🟢 <strong>Đã kết nối:</strong> @' + r.bot_username + ' — tin nhắn Telegram sẽ tự động được gửi tới agent này';
-      document.getElementById('edit-agent-tg-token').value = '';
-      loadAgents(); // refresh cards
-    } else {
-      toast('❌ ' + r.error);
-      el.innerHTML = '❌ ' + r.error;
-    }
-  } catch(e) { toast('❌ ' + e.message); el.innerHTML = '❌ ' + e.message; }
-}
-
-async function disconnectTelegramBot() {
-  const name = document.getElementById('edit-agent-name-hidden').value;
-  const el = document.getElementById('telegram-status');
-  
-  try {
-    const res = await authFetch(API + '/api/v1/agents/' + encodeURIComponent(name) + '/telegram', {
-      method: 'DELETE'
-    });
-    const r = await res.json();
-    if (r.ok) {
-      toast('⛔ Telegram bot đã ngắt kết nối');
-      el.innerHTML = '⚪ Chưa kết nối Telegram Bot.';
-      loadAgents();
-    } else {
-      toast('⚠️ ' + r.error);
-    }
-  } catch(e) { toast('❌ ' + e.message); }
-}
 
 async function saveAgentEdit() {
   const name = document.getElementById('edit-agent-name-hidden').value;
