@@ -434,11 +434,30 @@ tr:hover td{background:rgba(255,255,255,.02)}
 
     <!-- ═══ PROVIDERS ═══ -->
     <div id="page-providers" style="display:none">
-      <div class="page-header"><div><h1>🔌 <span data-i18n="providers.title">Nhà cung cấp</span></h1><div class="sub" data-i18n="providers.subtitle">Cấu hình nhà cung cấp AI — chọn provider mặc định, API key, model</div></div></div>
+      <div class="page-header"><div><h1>🔌 <span data-i18n="providers.title">Nhà cung cấp</span></h1><div class="sub" data-i18n="providers.subtitle">Cấu hình nhà cung cấp AI — chọn provider mặc định, API key, model</div></div>
+        <button class="btn btn-primary" onclick="toggleAddProviderForm()">+ Thêm nhà cung cấp</button>
+      </div>
       <div class="stats">
         <div class="card"><div class="card-label" data-i18n="providers.active_label">Provider đang dùng</div><div class="card-value green" id="prov-active-name" style="font-size:18px">—</div></div>
         <div class="card"><div class="card-label" data-i18n="set.model">Mô hình</div><div class="card-value blue" id="prov-active-model" style="font-size:16px">—</div></div>
         <div class="card"><div class="card-label" data-i18n="providers.total_label">Tổng providers</div><div class="card-value accent" id="prov-total">0</div></div>
+      </div>
+      <!-- Add Provider Form -->
+      <div id="add-provider-form" class="card" style="display:none;margin-bottom:16px">
+        <h3>➕ Thêm nhà cung cấp mới (OpenAI-compatible)</h3>
+        <div class="form-row"><span class="form-label">Tên (ID)</span><input id="new-prov-name" placeholder="my-provider"></div>
+        <div class="form-row"><span class="form-label">Nhãn hiển thị</span><input id="new-prov-label" placeholder="My Provider"></div>
+        <div class="form-row"><span class="form-label">Icon</span><input id="new-prov-icon" placeholder="🤖" style="width:60px" value="🤖"></div>
+        <div class="form-row"><span class="form-label">Loại</span><select id="new-prov-type"><option value="cloud">Cloud</option><option value="local">Local</option><option value="proxy">Proxy</option></select></div>
+        <div class="form-row"><span class="form-label">Base URL</span><input id="new-prov-url" placeholder="https://api.example.com/v1"></div>
+        <div class="form-row"><span class="form-label">API Key</span><input id="new-prov-key" type="password" placeholder="sk-..."></div>
+        <div class="form-row"><span class="form-label">Auth Style</span><select id="new-prov-auth"><option value="bearer">Bearer Token</option><option value="none">None (Local)</option></select></div>
+        <div class="form-row"><span class="form-label">Chat Path</span><input id="new-prov-chat" placeholder="/chat/completions" value="/chat/completions"></div>
+        <div class="form-row"><span class="form-label">Models Path</span><input id="new-prov-models-path" placeholder="/models" value="/models"></div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="btn btn-primary" onclick="saveNewProvider()">💾 Lưu</button>
+          <button class="btn btn-outline" onclick="toggleAddProviderForm()">Hủy</button>
+        </div>
       </div>
       <div class="ch-grid" id="providers-grid"></div>
     </div>
@@ -823,6 +842,7 @@ function showPage(name, pushState) {
   if (nav) nav.classList.add('active');
   if (name === 'chat') { document.getElementById('chat-input').focus(); refreshChatSidebar(); }
   if (name === 'settings') loadSettingsForm();
+  if (name === 'providers') loadProviders();
   if (name === 'channels') renderChannelCards();
   if (name === 'configfile') loadConfigToml();
   if (name === 'mcp') loadMcpServers();
@@ -894,52 +914,29 @@ async function loadDashboard() {
   } catch(e) {}
 }
 
-const PROVIDERS_META = [
-  {name:'openai',label:'OpenAI',icon:'🤖',type:'cloud',models:['gpt-4o','gpt-4o-mini','gpt-3.5-turbo','o1-mini','o3-mini'],fields:[
+// Provider fields definition — defines which fields appear on each type of provider card
+const PROVIDER_FIELDS = {
+  cloud: [
     {key:'api_key',label:'API Key',type:'password',placeholder:'sk-...'},
+    {key:'model',label:'Model',type:'text',placeholder:'Select or type model'},
+    {key:'base_url',label:'Base URL (optional)',type:'text',placeholder:'https://...'},
+  ],
+  local: [
+    {key:'model',label:'Model',type:'text',placeholder:'auto-detected'},
+    {key:'base_url',label:'Server URL',type:'text',placeholder:'http://localhost:11434/v1'},
+  ],
+  proxy: [
+    {key:'base_url',label:'Proxy URL (required)',type:'text',placeholder:'http://localhost:8787/v1'},
+    {key:'api_key',label:'API Key (if needed)',type:'password',placeholder:'proxy-key-...'},
     {key:'model',label:'Model',type:'text',placeholder:'gpt-4o-mini'},
-    {key:'base_url',label:'Base URL (optional)',type:'text',placeholder:'https://api.openai.com/v1'},
-  ]},
-  {name:'anthropic',label:'Anthropic',icon:'🧠',type:'cloud',models:['claude-sonnet-4','claude-3.5-sonnet','claude-3-haiku'],fields:[
-    {key:'api_key',label:'API Key',type:'password',placeholder:'sk-ant-...'},
-    {key:'model',label:'Model',type:'text',placeholder:'claude-sonnet-4-20250514'},
-    {key:'base_url',label:'Base URL (optional)',type:'text',placeholder:''},
-  ]},
-  {name:'gemini',label:'Google Gemini',icon:'💎',type:'cloud',models:['gemini-2.5-pro','gemini-2.5-flash','gemini-2.0-flash'],fields:[
-    {key:'api_key',label:'API Key',type:'password',placeholder:'AIza...'},
-    {key:'model',label:'Model',type:'text',placeholder:'gemini-2.5-flash'},
-    {key:'base_url',label:'Base URL (optional)',type:'text',placeholder:''},
-  ]},
-  {name:'deepseek',label:'DeepSeek',icon:'🌊',type:'cloud',models:['deepseek-chat','deepseek-reasoner'],fields:[
-    {key:'api_key',label:'API Key',type:'password',placeholder:'sk-...'},
-    {key:'model',label:'Model',type:'text',placeholder:'deepseek-chat'},
-    {key:'base_url',label:'Base URL (optional)',type:'text',placeholder:''},
-  ]},
-  {name:'groq',label:'Groq',icon:'⚡',type:'cloud',models:['llama-3.3-70b','mixtral-8x7b-32768'],fields:[
-    {key:'api_key',label:'API Key',type:'password',placeholder:'gsk_...'},
-    {key:'model',label:'Model',type:'text',placeholder:'llama-3.3-70b'},
-    {key:'base_url',label:'Base URL (optional)',type:'text',placeholder:''},
-  ]},
-  {name:'ollama',label:'Ollama (Local)',icon:'🦙',type:'local',models:['auto-detect'],fields:[
-    {key:'model',label:'Model',type:'text',placeholder:'qwen3:0.6b'},
-  ]},
-  {name:'llamacpp',label:'llama.cpp',icon:'🔧',type:'local',models:['server endpoint'],fields:[
-    {key:'base_url',label:'Server URL',type:'text',placeholder:'http://localhost:8080'},
-    {key:'model',label:'Model',type:'text',placeholder:'(auto-detected)'},
-  ]},
-  {name:'brain',label:'Brain Engine',icon:'🧲',type:'local',models:['GGUF offline'],fields:[
+  ],
+  brain: [
     {key:'model_path',label:'Model Path (.gguf)',type:'text',placeholder:'~/.bizclaw/models/tinyllama.gguf'},
     {key:'threads',label:'Threads',type:'number',placeholder:'4'},
-  ]},
-  {name:'cliproxy',label:'CLIProxyAPI',icon:'🔌',type:'proxy',models:['OpenAI-compatible proxy'],fields:[
-    {key:'base_url',label:'Proxy URL (bắt buộc)',type:'text',placeholder:'http://localhost:8787/v1'},
-    {key:'api_key',label:'API Key (nếu proxy yêu cầu)',type:'password',placeholder:'proxy-key-...'},
-    {key:'model',label:'Model',type:'text',placeholder:'gpt-4o-mini'},
-  ]},
-];
+  ],
+};
+
 // ═══ CLIProxy Persistence ═══
-// CLIProxyAPI proxies through openai provider. We persist 'cliproxy' state in localStorage
-// because Rust config only knows openai+base_url. This distinguishes CLIProxy from OpenAI+custom URL.
 function isClipProxyActive(c) {
   if (!c) return false;
   const flag = localStorage.getItem('bizclaw_cliproxy');
@@ -953,7 +950,10 @@ function setClipProxyFlag(active) {
   else localStorage.removeItem('bizclaw_cliproxy');
 }
 
-function renderProviderCards() {
+// Cache for providers loaded from DB API
+let _dbProviders = null;
+
+async function renderProviderCards() {
   const c = configData;
   const activeProvider = c.default_provider || 'openai';
   const activeModel = c.default_model || '';
@@ -961,48 +961,144 @@ function renderProviderCards() {
   const isClipActive = isClipProxyActive(c);
   document.getElementById('prov-active-name').textContent = isClipActive ? 'CLIProxyAPI' : activeProvider;
   document.getElementById('prov-active-model').textContent = activeModel || '\u2014';
-  document.getElementById('prov-total').textContent = PROVIDERS_META.length;
+
+  // Load providers from DB API
+  try {
+    const res = await authFetch(API + '/api/v1/providers');
+    const data = await res.json();
+    if (data.providers) _dbProviders = data.providers;
+  } catch(e) { console.log('provider load err:', e); }
+
+  if (!_dbProviders || !_dbProviders.length) {
+    document.getElementById('providers-grid').innerHTML = '<div class="card" style="text-align:center;padding:30px;color:var(--text2)">No providers found</div>';
+    return;
+  }
+
+  document.getElementById('prov-total').textContent = _dbProviders.length;
   const cloudLabel = t('providers.type_cloud');
   const localLabel = t('providers.type_local');
   const proxyLabel = t('providers.type_proxy') || 'Proxy';
   const activeLabel = t('providers.badge_active');
   const activateBtn = t('providers.btn_activate');
   const activeBtn = t('providers.btn_active');
-  document.getElementById('providers-grid').innerHTML = PROVIDERS_META.map(p => {
+
+  document.getElementById('providers-grid').innerHTML = _dbProviders.map(p => {
     const isActive = p.name === 'cliproxy' ? isClipActive : (p.name === activeProvider && !isClipActive);
-    const savedKey = c.api_key_set && isActive;
+    const savedKey = p.api_key_set && isActive;
     const typeLabel = p.type === 'cloud' ? cloudLabel : (p.type === 'proxy' ? proxyLabel : localLabel);
+    const fields = p.name === 'brain' ? PROVIDER_FIELDS.brain : (PROVIDER_FIELDS[p.type] || PROVIDER_FIELDS.cloud);
+    
     const fieldVals = {};
     if (isActive) {
-      p.fields.forEach(f => {
+      fields.forEach(f => {
         if (f.key === 'api_key') fieldVals[f.key] = savedKey ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : '';
         else if (f.key === 'model') fieldVals[f.key] = activeModel;
-        else if (f.key === 'base_url') fieldVals[f.key] = proxyUrl;
+        else if (f.key === 'base_url') fieldVals[f.key] = proxyUrl || p.base_url;
         else if (f.key === 'model_path') fieldVals[f.key] = (c.brain||{}).model_path || '';
         else if (f.key === 'threads') fieldVals[f.key] = (c.brain||{}).threads || 4;
       });
     }
+
+    // Models hint (from DB cache)
+    const modelsHint = (p.models || []).slice(0, 5).join(', ');
+
     return `<div class="ch-card" style="${isActive?'border-color:var(--accent);box-shadow:0 0 24px rgba(99,102,241,.15)':''}">
       <div class="ch-header">
-        <span class="ch-name">${p.icon} ${p.label}</span>
+        <span class="ch-name">${p.icon || '🤖'} ${p.label || p.name}</span>
         <div style="display:flex;align-items:center;gap:8px">
           <span class="badge badge-${isActive?'green':p.type==='proxy'?'purple':'blue'}">${isActive?'\u25cf '+activeLabel:typeLabel}</span>
         </div>
       </div>
-      <div style="font-size:11px;color:var(--text2);margin-bottom:10px">${p.models.join(', ')}</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px">${modelsHint || 'no cached models'}</div>
       <div class="ch-fields">
-        ${p.fields.map(f => {
+        ${fields.map(f => {
           const val = fieldVals[f.key] || '';
           return `<label>${f.label}</label><input type="${f.type||'text'}" id="prov-${p.name}-${f.key}" value="${val}" placeholder="${f.placeholder}">`;
         }).join('')}
       </div>
-      ${p.name === 'cliproxy' ? '<div style="font-size:11px;color:var(--cyan);margin-bottom:8px;padding:6px 8px;background:rgba(34,211,238,.06);border-radius:6px">\ud83d\udca1 Proxy OpenAI-compatible APIs: LiteLLM, LocalAI, vLLM, text-gen-webui, Claw, etc.</div>' : ''}
+      ${p.name === 'cliproxy' ? '<div style="font-size:11px;color:var(--cyan);margin-bottom:8px;padding:6px 8px;background:rgba(34,211,238,.06);border-radius:6px">\ud83d\udca1 Proxy OpenAI-compatible APIs: LiteLLM, LocalAI, vLLM, text-gen-webui, etc.</div>' : ''}
       <div class="ch-actions">
         <button class="btn ${isActive?'btn-green':'btn-primary'} btn-sm" onclick="setActiveProvider('${p.name}')">${isActive?activeBtn:activateBtn}</button>
-        ${isActive && p.name === 'cliproxy' ? '<button class="btn btn-outline btn-sm" onclick="testClipProxy()">\ud83e\uddea Test</button>' : ''}
+        <button class="btn btn-outline btn-sm" onclick="fetchModelsLive('${p.name}')" title="Tải model từ API">🔄 Models</button>
+        ${!['openai','anthropic','gemini','deepseek','groq','ollama','llamacpp','brain'].includes(p.name) ? `<button class="btn btn-outline btn-sm" onclick="deleteProviderCard('${p.name}')" style="color:var(--red)">🗑️</button>` : ''}
       </div>
     </div>`;
   }).join('');
+}
+
+async function fetchModelsLive(name) {
+  toast('🔄 Đang tải models từ API...');
+  try {
+    const res = await authFetch(API + '/api/v1/providers/' + encodeURIComponent(name) + '/models');
+    const data = await res.json();
+    if (data.ok) {
+      const models = data.models || [];
+      toast('✅ ' + models.length + ' model(s) từ ' + name + ' (' + data.source + ')');
+      // Refresh providers cache with new models
+      if (_dbProviders) {
+        const prov = _dbProviders.find(p => p.name === name);
+        if (prov) prov.models = models;
+      }
+      await renderProviderCards();
+    } else {
+      toast('⚠️ ' + (data.error || 'Không lấy được models'));
+    }
+  } catch(e) {
+    toast('❌ ' + e.message);
+  }
+}
+
+async function deleteProviderCard(name) {
+  if (!confirm('Xóa provider "' + name + '"? Không thể hoàn tác.')) return;
+  try {
+    const res = await authFetch(API + '/api/v1/providers/' + encodeURIComponent(name), {method:'DELETE'});
+    const r = await res.json();
+    if (r.ok) {
+      toast('✅ Đã xóa provider ' + name);
+      _dbProviders = null;
+      await renderProviderCards();
+    } else {
+      toast('❌ ' + r.error);
+    }
+  } catch(e) { toast('❌ ' + e.message); }
+}
+
+function toggleAddProviderForm() {
+  const form = document.getElementById('add-provider-form');
+  form.style.display = form.style.display === 'none' ? '' : 'none';
+}
+
+async function saveNewProvider() {
+  const name = document.getElementById('new-prov-name').value.trim().toLowerCase().replace(/\s+/g, '-');
+  const label = document.getElementById('new-prov-label').value.trim();
+  const icon = document.getElementById('new-prov-icon').value.trim() || '🤖';
+  const ptype = document.getElementById('new-prov-type').value;
+  const base_url = document.getElementById('new-prov-url').value.trim();
+  const api_key = document.getElementById('new-prov-key').value.trim();
+  const auth_style = document.getElementById('new-prov-auth').value;
+  const chat_path = document.getElementById('new-prov-chat').value.trim() || '/chat/completions';
+  const models_path = document.getElementById('new-prov-models-path').value.trim() || '/models';
+  
+  if (!name) { toast('❌ Tên provider không được để trống'); return; }
+  if (!base_url) { toast('❌ Base URL là bắt buộc'); return; }
+  
+  try {
+    const res = await authFetch(API + '/api/v1/providers', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        name, label: label || name, icon, type: ptype,
+        api_key, base_url, chat_path, models_path, auth_style,
+        models: [],
+      }),
+    });
+    const r = await res.json();
+    if (r.ok) {
+      toast('✅ Provider "' + name + '" đã tạo!');
+      toggleAddProviderForm();
+      _dbProviders = null;
+      await renderProviderCards();
+    } else { toast('❌ ' + r.error); }
+  } catch(e) { toast('❌ ' + e.message); }
 }
 
 async function testClipProxy() {
@@ -1025,11 +1121,13 @@ async function testClipProxy() {
 }
 
 async function setActiveProvider(name) {
-  const meta = PROVIDERS_META.find(p => p.name === name);
-  if (!meta) return;
+  // Find provider from DB cache
+  const meta = _dbProviders ? _dbProviders.find(p => p.name === name) : null;
   const actualProvider = name === 'cliproxy' ? 'openai' : name;
   const body = { default_provider: actualProvider };
-  meta.fields.forEach(f => {
+  const fields = name === 'brain' ? PROVIDER_FIELDS.brain : (PROVIDER_FIELDS[meta?.type || 'cloud'] || PROVIDER_FIELDS.cloud);
+  
+  fields.forEach(f => {
     const el = document.getElementById('prov-' + name + '-' + f.key);
     if (!el) return;
     const val = el.value.trim();
@@ -1045,9 +1143,9 @@ async function setActiveProvider(name) {
   }
   if (!body.default_model) {
     if (name === 'brain') body.default_model = 'brain-local';
-    else body.default_model = meta.models[0] || '';
+    else if (meta && meta.models && meta.models.length) body.default_model = meta.models[0];
+    else body.default_model = '';
   }
-  // Persist CLIProxy flag to localStorage (survives page reload)
   setClipProxyFlag(name === 'cliproxy');
   try {
     const res = await authFetch(API + '/api/v1/config/update', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -1055,14 +1153,14 @@ async function setActiveProvider(name) {
     if (r.ok) {
       toast('\u2705 Provider ' + (name === 'cliproxy' ? 'CLIProxyAPI' : name) + ' activated!');
       await loadConfig();
-      renderProviderCards();
+      await renderProviderCards();
       loadDashboard();
     } else { toast('\u274c ' + r.error); }
   } catch(e) { toast('\u274c ' + e.message); }
 }
 
 async function loadProviders() {
-  renderProviderCards();
+  await renderProviderCards();
 }
 
 // ═══ SETTINGS ═══
