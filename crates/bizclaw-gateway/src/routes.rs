@@ -1406,8 +1406,16 @@ pub async fn create_agent(
     }
     agent_config.identity.name = name.to_string();
 
-    match bizclaw_agent::Agent::new_with_mcp(agent_config).await {
-        Ok(agent) => {
+    // CRITICAL: timeout to prevent deadlock — if Agent::new_with_mcp hangs
+    // (e.g., MCP server unreachable, brain GGUF loading), it blocks ALL orchestrator
+    // operations because the async Mutex is held by create→lock sequence.
+    let agent_result = tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        bizclaw_agent::Agent::new_with_mcp(agent_config),
+    ).await;
+
+    match agent_result {
+        Ok(Ok(agent)) => {
             let provider = agent.provider_name().to_string();
             let model = agent.model_name().to_string();
             let system_prompt = agent.system_prompt().to_string();
@@ -1430,9 +1438,13 @@ pub async fn create_agent(
                 "total_agents": orch.agent_count(),
             }))
         }
-        Err(e) => Json(serde_json::json!({
+        Ok(Err(e)) => Json(serde_json::json!({
             "ok": false,
             "error": format!("Failed to create agent: {e}"),
+        })),
+        Err(_) => Json(serde_json::json!({
+            "ok": false,
+            "error": "Agent creation timed out (30s). Check provider/MCP connectivity.",
         })),
     }
 }
@@ -1473,29 +1485,29 @@ pub async fn update_agent(
     let model = body["model"].as_str();
     let system_prompt = body["system_prompt"].as_str();
 
-    let mut orch = state.orchestrator.lock().await;
+    // Phase 1: Update basic metadata (uses orchestrator lock briefly)
+    {
+        let mut orch = state.orchestrator.lock().await;
+        let updated = orch.update_agent(&name, role, description);
+        if !updated {
+            return Json(serde_json::json!({"ok": false, "message": format!("Agent '{}' not found", name)}));
+        }
+    } // lock released here
 
-    // Update basic metadata (role, description)
-    let updated = orch.update_agent(&name, role, description);
-    if !updated {
-        return Json(serde_json::json!({"ok": false, "message": format!("Agent '{}' not found", name)}));
-    }
-
-    // If provider/model/system_prompt changed, we need to re-create the agent
+    // Phase 2: Re-create agent if provider/model/prompt changed
     let needs_recreate = provider.is_some() || model.is_some() || system_prompt.is_some();
     if needs_recreate {
-        // Build new config based on current system config + overrides
+        // Build config from current agent + overrides
         let mut agent_config = state.full_config.lock().unwrap().clone();
-        
-        // Get current agent values as fallback
-        if let Some(agent) = orch.get_agent_mut(&name) {
-            // Use existing values as base
-            agent_config.default_provider = agent.provider_name().to_string();
-            agent_config.default_model = agent.model_name().to_string();
-            agent_config.identity.system_prompt = agent.system_prompt().to_string();
-        }
+        {
+            let mut orch = state.orchestrator.lock().await;
+            if let Some(agent) = orch.get_agent_mut(&name) {
+                agent_config.default_provider = agent.provider_name().to_string();
+                agent_config.default_model = agent.model_name().to_string();
+                agent_config.identity.system_prompt = agent.system_prompt().to_string();
+            }
+        } // lock released before potentially slow await
 
-        // Apply overrides
         if let Some(p) = provider {
             if !p.is_empty() { agent_config.default_provider = p.to_string(); }
         }
@@ -1507,13 +1519,18 @@ pub async fn update_agent(
         }
         agent_config.identity.name = name.clone();
 
-        // Re-create agent with new config
-        match bizclaw_agent::Agent::new_with_mcp(agent_config).await {
-            Ok(new_agent) => {
-                // Remove old agent, add new one
+        // Create new agent WITH TIMEOUT — no lock held during this await
+        let agent_result = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            bizclaw_agent::Agent::new_with_mcp(agent_config),
+        ).await;
+
+        // Re-acquire lock to swap agent
+        let mut orch = state.orchestrator.lock().await;
+        match agent_result {
+            Ok(Ok(new_agent)) => {
                 let role_str = role.unwrap_or("assistant").to_string();
                 let desc_str = description.unwrap_or("").to_string();
-                // Get current role/desc if not provided
                 let agents_list = orch.list_agents();
                 let current = agents_list.iter().find(|a| a["name"].as_str() == Some(&name));
                 let final_role = if role.is_some() { role_str.clone() } else {
@@ -1522,19 +1539,21 @@ pub async fn update_agent(
                 let final_desc = if description.is_some() { desc_str.clone() } else {
                     current.and_then(|a| a["description"].as_str()).unwrap_or("").to_string()
                 };
-                
                 orch.remove_agent(&name);
                 orch.add_agent(&name, &final_role, &final_desc, new_agent);
                 tracing::info!("🔄 Agent '{}' re-created with new config", name);
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 tracing::warn!("⚠️ Agent '{}' re-create failed: {}", name, e);
-                // Still save metadata change even if re-create failed
+            }
+            Err(_) => {
+                tracing::warn!("⚠️ Agent '{}' re-create timed out (30s)", name);
             }
         }
     }
 
-    // Persist to DB
+    // Phase 3: Persist to DB (final lock acquisition)
+    let mut orch = state.orchestrator.lock().await;
     if let Some(agent) = orch.get_agent_mut(&name) {
         let provider = agent.provider_name().to_string();
         let model = agent.model_name().to_string();
