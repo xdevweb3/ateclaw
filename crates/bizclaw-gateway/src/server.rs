@@ -122,6 +122,10 @@ pub fn build_router(state: AppState) -> Router {
             "/api/v1/channels/update",
             post(super::routes::update_channel),
         )
+        // Multi-instance channel management
+        .route("/api/v1/channel-instances", get(super::routes::list_channel_instances))
+        .route("/api/v1/channel-instances", post(super::routes::save_channel_instance))
+        .route("/api/v1/channel-instances/{id}", axum::routing::delete(super::routes::delete_channel_instance))
         .route("/api/v1/ollama/models", get(super::routes::ollama_models))
         .route(
             "/api/v1/brain/models",

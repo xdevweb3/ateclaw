@@ -466,8 +466,42 @@ tr:hover td{background:rgba(255,255,255,.02)}
 
     <!-- ═══ CHANNELS ═══ -->
     <div id="page-channels" style="display:none">
-      <div class="page-header"><div><h1>📱 <span data-i18n="channels.title">Cấu hình kênh liên lạc</span></h1><div class="sub" data-i18n="channels.subtitle">Kết nối agent với các nền tảng nhắn tin</div></div></div>
-      <div class="ch-grid" id="channels-grid"></div>
+      <div class="page-header"><div><h1>📱 <span data-i18n="channels.title">Cấu hình kênh liên lạc</span></h1><div class="sub" data-i18n="channels.subtitle">Kết nối agent với các nền tảng nhắn tin — hỗ trợ nhiều instance cùng loại</div></div>
+        <button class="btn btn-primary" onclick="showAddChannelModal()">+ Thêm kênh</button>
+      </div>
+      <!-- User-created instances -->
+      <div id="channel-instances-section" style="margin-bottom:20px">
+        <div id="channel-instances-grid" class="ch-grid"></div>
+      </div>
+      <!-- Legacy single-instance cards -->
+      <details style="margin-bottom:16px">
+        <summary style="cursor:pointer;color:var(--text2);font-size:12px;padding:8px 0">⚙️ Cấu hình nhanh (mỗi loại 1 kênh)</summary>
+        <div class="ch-grid" id="channels-grid" style="margin-top:10px"></div>
+      </details>
+      <!-- Add Channel Modal -->
+      <div id="add-channel-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:200;align-items:center;justify-content:center;backdrop-filter:blur(4px)">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px;max-width:480px;width:92%">
+          <h3>➕ Thêm kênh mới</h3>
+          <div class="form-row" style="margin-top:12px"><span class="form-label">Tên kênh</span><input id="new-ch-name" placeholder="VD: Bot Bán hàng, Webhook CRM, Zalo Kinh doanh"></div>
+          <div class="form-row"><span class="form-label">Loại kênh</span>
+            <select id="new-ch-type" onchange="onNewChTypeChange()" style="padding:8px 12px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;color:var(--text)">
+              <option value="telegram">📱 Telegram Bot</option>
+              <option value="zalo">🇻🇳 Zalo Personal</option>
+              <option value="zalo_oa">🇻🇳 Zalo OA Bot</option>
+              <option value="discord">🎮 Discord Bot</option>
+              <option value="email">📧 Email (SMTP)</option>
+              <option value="whatsapp">📲 WhatsApp Business</option>
+              <option value="webhook">🔗 Webhook API</option>
+              <option value="slack">💼 Slack Bot</option>
+            </select>
+          </div>
+          <div id="new-ch-fields" style="margin-top:12px"></div>
+          <div style="display:flex;gap:8px;margin-top:16px">
+            <button class="btn btn-primary" onclick="createChannelInstance()">💾 Tạo kênh</button>
+            <button class="btn btn-outline" onclick="document.getElementById('add-channel-modal').style.display='none'">Hủy</button>
+          </div>
+        </div>
+      </div>
       <!-- Zalo QR Modal -->
       <div id="zalo-qr-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;display:none;align-items:center;justify-content:center">
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px;max-width:420px;width:90%;text-align:center">
@@ -906,7 +940,7 @@ function showPage(name, pushState) {
   if (name === 'chat') { document.getElementById('chat-input').focus(); refreshChatSidebar(); }
   if (name === 'settings') loadSettingsForm();
   if (name === 'providers') loadProviders();
-  if (name === 'channels') renderChannelCards();
+  if (name === 'channels') { renderChannelCards(); loadChannelInstances(); }
   if (name === 'configfile') loadConfigToml();
   if (name === 'mcp') loadMcpServers();
   if (name === 'agents') { loadAgents(); }
@@ -1613,6 +1647,116 @@ function renderChannelCards() {
   }).join('');
 }
 
+// ═══ MULTI-INSTANCE CHANNELS ═══
+function showAddChannelModal() {
+  document.getElementById('add-channel-modal').style.display = 'flex';
+  document.getElementById('new-ch-name').value = '';
+  onNewChTypeChange();
+}
+
+function onNewChTypeChange() {
+  const type = document.getElementById('new-ch-type').value;
+  const def = CHANNELS.find(c => c.type === type);
+  const container = document.getElementById('new-ch-fields');
+  if (!def) { container.innerHTML = ''; return; }
+  container.innerHTML = def.fields.filter(f => f.type !== 'info').map(f =>
+    `<div class="form-row"><span class="form-label">${f.label}</span><input type="${f.type}" id="new-ch-field-${f.key}" placeholder="${f.placeholder}"></div>`
+  ).join('');
+}
+
+async function createChannelInstance() {
+  const name = document.getElementById('new-ch-name').value.trim();
+  const type = document.getElementById('new-ch-type').value;
+  if (!name) { toast('❌ Nhập tên kênh'); return; }
+  const def = CHANNELS.find(c => c.type === type);
+  if (!def) return;
+  const config = {};
+  def.fields.forEach(f => {
+    if (f.type === 'info') return;
+    const el = document.getElementById('new-ch-field-' + f.key);
+    if (el) config[f.key] = el.value;
+  });
+  try {
+    const res = await authFetch(API + '/api/v1/channel-instances', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ name, channel_type: type, enabled: true, config })
+    });
+    const r = await res.json();
+    if (r.ok) {
+      toast('✅ Đã tạo kênh: ' + name);
+      document.getElementById('add-channel-modal').style.display = 'none';
+      loadChannelInstances();
+    } else toast('❌ ' + r.error);
+  } catch(e) { toast('❌ ' + e.message); }
+}
+
+async function loadChannelInstances() {
+  try {
+    const res = await authFetch(API + '/api/v1/channel-instances');
+    const data = await res.json();
+    renderChannelInstances(data.instances || []);
+  } catch(e) { console.error('loadChannelInstances:', e); }
+}
+
+function renderChannelInstances(instances) {
+  const grid = document.getElementById('channel-instances-grid');
+  if (instances.length === 0) {
+    grid.innerHTML = '<div style="color:var(--text2);padding:20px;text-align:center;grid-column:1/-1">Chưa có kênh nào. Bấm <b>+ Thêm kênh</b> để bắt đầu.</div>';
+    return;
+  }
+  grid.innerHTML = instances.map(inst => {
+    const def = CHANNELS.find(c => c.type === inst.channel_type) || {icon:'📡',name:inst.channel_type,fields:[]};
+    const cfg = inst.config || {};
+    return `<div class="ch-card" style="position:relative">
+      <div class="ch-header">
+        <span class="ch-name">${def.icon} ${inst.name}</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="badge badge-${inst.enabled?'green':'orange'}">${inst.enabled?'Active':'Off'}</span>
+          <span style="font-size:10px;color:var(--text2)">${def.name}</span>
+        </div>
+      </div>
+      <div class="ch-fields">
+        ${def.fields.filter(f=>f.type!=='info').map(f => {
+          const val = cfg[f.key] || '';
+          const display = f.masked && val ? '••••••' : val;
+          return `<label>${f.label}</label><input type="${f.type}" id="inst-${inst.id}-${f.key}" value="${display}" placeholder="${f.placeholder}">`;
+        }).join('')}
+      </div>
+      <div class="ch-actions" style="display:flex;gap:8px">
+        <button class="btn btn-primary btn-sm" onclick="saveInstanceConfig('${inst.id}','${inst.channel_type}','${inst.name}')">💾 Lưu</button>
+        <button class="btn btn-outline btn-sm" style="color:var(--red)" onclick="deleteChannelInstance('${inst.id}','${inst.name}')">🗑️ Xóa</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function saveInstanceConfig(id, type, name) {
+  const def = CHANNELS.find(c => c.type === type) || {fields:[]};
+  const config = {};
+  def.fields.forEach(f => {
+    if (f.type === 'info') return;
+    const el = document.getElementById('inst-' + id + '-' + f.key);
+    if (el && el.value && !el.value.includes('••••')) config[f.key] = el.value;
+  });
+  try {
+    const res = await authFetch(API + '/api/v1/channel-instances', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ id, name, channel_type: type, enabled: true, config })
+    });
+    const r = await res.json();
+    toast(r.ok ? '✅ Đã lưu: ' + name : '❌ ' + r.error);
+  } catch(e) { toast('❌ ' + e.message); }
+}
+
+async function deleteChannelInstance(id, name) {
+  if (!confirm('Xóa kênh "' + name + '"?')) return;
+  try {
+    const res = await authFetch(API + '/api/v1/channel-instances/' + id, { method:'DELETE' });
+    const r = await res.json();
+    if (r.ok) { toast('🗑️ Đã xóa: ' + name); loadChannelInstances(); }
+    else toast('❌ ' + r.error);
+  } catch(e) { toast('❌ ' + e.message); }
+}
 async function saveChannel(type) {
   const def = CHANNELS.find(c => c.type === type);
   if (!def) return;

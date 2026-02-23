@@ -592,6 +592,153 @@ pub async fn update_channel(
     }
 }
 
+/// Channel instances file path helper.
+fn channel_instances_path(state: &AppState) -> std::path::PathBuf {
+    state.config_path.parent()
+        .unwrap_or(std::path::Path::new("."))
+        .join("channel_instances.json")
+}
+
+/// Load channel instances from JSON file.
+fn load_channel_instances(state: &AppState) -> Vec<serde_json::Value> {
+    let path = channel_instances_path(state);
+    if path.exists() {
+        std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
+    } else {
+        vec![]
+    }
+}
+
+/// Save channel instances to JSON file.
+fn save_channel_instances(state: &AppState, instances: &[serde_json::Value]) {
+    let path = channel_instances_path(state);
+    let json = serde_json::to_string_pretty(instances).unwrap_or_default();
+    std::fs::write(&path, json).ok();
+}
+
+/// List all channel instances.
+pub async fn list_channel_instances(
+    State(state): State<Arc<AppState>>,
+) -> Json<serde_json::Value> {
+    let instances = load_channel_instances(&state);
+    Json(serde_json::json!({
+        "ok": true,
+        "instances": instances,
+    }))
+}
+
+/// Create or update a channel instance.
+pub async fn save_channel_instance(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<serde_json::Value>,
+) -> Json<serde_json::Value> {
+    let id = req.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let name = req.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let channel_type = req.get("channel_type").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let enabled = req.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false);
+    let config = req.get("config").cloned().unwrap_or(serde_json::json!({}));
+
+    if name.is_empty() || channel_type.is_empty() {
+        return Json(serde_json::json!({"ok": false, "error": "name and channel_type required"}));
+    }
+
+    let mut instances = load_channel_instances(&state);
+
+    // Generate or reuse ID
+    let instance_id = if id.is_empty() {
+        format!("{}_{}", channel_type, chrono::Utc::now().timestamp_millis())
+    } else {
+        id.clone()
+    };
+
+    let instance = serde_json::json!({
+        "id": instance_id,
+        "name": name,
+        "channel_type": channel_type,
+        "enabled": enabled,
+        "config": config,
+        "updated_at": chrono::Utc::now().to_rfc3339(),
+    });
+
+    // Update existing or insert new
+    if let Some(pos) = instances.iter().position(|i| i["id"].as_str() == Some(&instance_id)) {
+        instances[pos] = instance.clone();
+    } else {
+        instances.push(instance.clone());
+    }
+
+    save_channel_instances(&state, &instances);
+
+    // Also sync primary (first enabled) of this type to config.toml
+    // This makes the first enabled instance of each type "active"
+    let first_enabled = instances.iter()
+        .find(|i| i["channel_type"].as_str() == Some(&channel_type) && i["enabled"].as_bool() == Some(true));
+    if let Some(primary) = first_enabled {
+        let cfg = primary["config"].clone();
+        let mut sync_body = cfg.as_object().cloned().unwrap_or_default();
+        sync_body.insert("channel_type".into(), serde_json::json!(channel_type));
+        sync_body.insert("enabled".into(), serde_json::json!(true));
+        // Trigger update_channel internally via direct config write
+        let mut full_cfg = state.full_config.lock().unwrap();
+        match channel_type.as_str() {
+            "telegram" => {
+                let token = sync_body.get("bot_token").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let chat_ids: Vec<i64> = sync_body.get("allowed_chat_ids")
+                    .and_then(|v| v.as_str()).unwrap_or("")
+                    .split(',').filter_map(|s| s.trim().parse().ok()).collect();
+                full_cfg.channel.telegram = Some(bizclaw_core::config::TelegramChannelConfig {
+                    enabled: true, bot_token: token, allowed_chat_ids: chat_ids,
+                });
+            }
+            "webhook" => {
+                let outbound = sync_body.get("webhook_url").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let secret = sync_body.get("webhook_secret").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                full_cfg.channel.webhook = Some(bizclaw_core::config::WebhookChannelConfig {
+                    enabled: true, secret, outbound_url: outbound,
+                });
+            }
+            _ => {} // Other types handled as-is
+        }
+        let content = toml::to_string_pretty(&*full_cfg).unwrap_or_default();
+        std::fs::write(&state.config_path, &content).ok();
+        drop(full_cfg);
+    }
+
+    // Also write channels_sync.json for platform restart persistence
+    let cfg = state.full_config.lock().unwrap();
+    if let Some(parent) = state.config_path.parent() {
+        let channels_json = serde_json::json!({
+            "telegram": cfg.channel.telegram.as_ref().map(|t| serde_json::json!({"enabled": t.enabled, "bot_token": t.bot_token, "allowed_chat_ids": t.allowed_chat_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(", ")})),
+            "webhook": cfg.channel.webhook.as_ref().map(|wh| serde_json::json!({"enabled": wh.enabled, "secret": wh.secret, "outbound_url": wh.outbound_url})),
+        });
+        std::fs::write(parent.join("channels_sync.json"), serde_json::to_string_pretty(&channels_json).unwrap_or_default()).ok();
+    }
+    drop(cfg);
+
+    Json(serde_json::json!({
+        "ok": true,
+        "instance": instance,
+    }))
+}
+
+/// Delete a channel instance.
+pub async fn delete_channel_instance(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Json<serde_json::Value> {
+    let mut instances = load_channel_instances(&state);
+    let before = instances.len();
+    instances.retain(|i| i["id"].as_str() != Some(&id));
+    if instances.len() == before {
+        return Json(serde_json::json!({"ok": false, "error": "Instance not found"}));
+    }
+    save_channel_instances(&state, &instances);
+    Json(serde_json::json!({"ok": true, "message": "Instance deleted"}))
+}
+
 /// List available providers (from DB) — fully self-describing, no hardcoded metadata.
 pub async fn list_providers(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
     let cfg = state.full_config.lock().unwrap();
