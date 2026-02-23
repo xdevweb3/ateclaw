@@ -886,6 +886,23 @@ pub async fn delete_agent(
     }))
 }
 
+/// Update an existing agent's metadata.
+pub async fn update_agent(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Path(name): axum::extract::Path<String>,
+    Json(body): Json<serde_json::Value>,
+) -> Json<serde_json::Value> {
+    let role = body["role"].as_str();
+    let description = body["description"].as_str();
+    
+    let mut orch = state.orchestrator.lock().await;
+    let updated = orch.update_agent(&name, role, description);
+    Json(serde_json::json!({
+        "ok": updated,
+        "message": if updated { format!("Agent '{}' updated", name) } else { format!("Agent '{}' not found", name) },
+    }))
+}
+
 /// Chat with a specific agent.
 pub async fn agent_chat(
     State(state): State<Arc<AppState>>,

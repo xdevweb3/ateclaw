@@ -286,7 +286,16 @@ tr:hover td{background:rgba(255,255,255,.02)}
 
     <!-- ═══ WEBCHAT ═══ -->
     <div id="page-chat" style="display:none">
-      <div class="page-header"><h1>💬 <span data-i18n="chat.title">Trò chuyện</span></h1></div>
+      <div class="page-header">
+        <h1>💬 <span data-i18n="chat.title">Trò chuyện</span></h1>
+        <div style="display:flex;align-items:center;gap:8px">
+          <select id="chat-agent-select" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:12px" onchange="onChatAgentChange()">
+            <option value="">🤖 Default Agent</option>
+          </select>
+          <button class="btn btn-outline btn-sm" onclick="refreshChatAgents()" title="Refresh agents">🔄</button>
+        </div>
+      </div>
+      <div id="chat-agent-info" style="display:none;padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:12px;font-size:12px;color:var(--accent2)"></div>
       <div class="chat-wrap">
         <div class="chat-messages" id="chat-messages">
           <div class="msg msg-system" data-i18n="chat.welcome">Đã kết nối BizClaw. Nhập tin nhắn để bắt đầu trò chuyện.</div>
@@ -538,6 +547,23 @@ tr:hover td{background:rgba(255,255,255,.02)}
           <button class="btn btn-outline" onclick="document.getElementById('agent-create-form').style.display='none'" data-i18n="form.cancel">Hủy</button>
         </div>
       </div>
+      <!-- Edit Agent Modal -->
+      <div id="agent-edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;align-items:center;justify-content:center;backdrop-filter:blur(4px)">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;max-width:500px;width:90%">
+          <h3>✏️ <span data-i18n="agents.edit">Sửa Agent</span>: <span id="edit-agent-title"></span></h3>
+          <input type="hidden" id="edit-agent-name-hidden">
+          <div class="form-row" style="margin-top:12px"><span class="form-label" data-i18n="form.role">Vai trò</span><select id="edit-agent-role">
+            <option value="assistant">Trợ lý</option><option value="researcher">Nhà nghiên cứu</option>
+            <option value="coder">Lập trình viên</option><option value="writer">Nhà văn</option>
+            <option value="analyst">Phân tích viên</option><option value="translator">Phiên dịch</option>
+          </select></div>
+          <div class="form-row"><span class="form-label" data-i18n="form.description">Mô tả</span><input id="edit-agent-desc"></div>
+          <div style="display:flex;gap:8px;margin-top:16px">
+            <button class="btn btn-primary" onclick="saveAgentEdit()">💾 Lưu</button>
+            <button class="btn btn-outline" onclick="document.getElementById('agent-edit-modal').style.display='none'">Hủy</button>
+          </div>
+        </div>
+      </div>
       <div id="agents-list" class="ch-grid" style="margin-top:16px"></div>
       <!-- Broadcast -->
       <div class="card" style="margin-top:16px">
@@ -703,7 +729,7 @@ function showPage(name, pushState) {
   const nav = document.getElementById('nav-' + name);
   if (page) page.style.display = '';
   if (nav) nav.classList.add('active');
-  if (name === 'chat') document.getElementById('chat-input').focus();
+  if (name === 'chat') { document.getElementById('chat-input').focus(); refreshChatAgents(); }
   if (name === 'settings') loadSettingsForm();
   if (name === 'channels') renderChannelCards();
   if (name === 'configfile') loadConfigToml();
@@ -1573,25 +1599,29 @@ async function loadAgents() {
       return;
     }
     
-    list.innerHTML = data.agents.map(a => `
+    list.innerHTML = data.agents.map(a => {
+      const safeName = a.name.replace(/'/g, "\\'");
+      const icon = a.role === 'coder' ? '💻' : a.role === 'researcher' ? '🔬' : a.role === 'writer' ? '✍️' : a.role === 'analyst' ? '📊' : a.role === 'translator' ? '🌐' : '🤖';
+      return `
       <div class="card" style="position:relative">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-          <span style="font-size:24px">${a.role === 'coder' ? '💻' : a.role === 'researcher' ? '🔬' : a.role === 'writer' ? '✍️' : a.role === 'analyst' ? '📊' : a.role === 'translator' ? '🌐' : '🤖'}</span>
-          <div>
+          <span style="font-size:24px">${icon}</span>
+          <div style="flex:1">
             <div style="font-weight:600;color:var(--text)">${a.name} ${a.is_default ? '<span style="font-size:10px;background:var(--accent);color:#000;padding:2px 6px;border-radius:8px">DEFAULT</span>' : ''}</div>
             <div style="font-size:11px;color:var(--text2)">${a.role} • ${a.provider} • ${a.tools} tools</div>
           </div>
+          <button class="btn btn-outline btn-sm" onclick="editAgent('${safeName}','${a.role}','${a.description.replace(/'/g, "\\'").replace(/"/g,'&quot;')}')" style="font-size:11px" title="Sửa">✏️</button>
         </div>
         <div style="font-size:12px;color:var(--text2)">${a.description}</div>
         <div style="font-size:11px;color:var(--text2);margin-top:6px">💬 ${a.messages_processed} messages • 📝 ${a.conversation_length} in context</div>
         <div style="display:flex;gap:6px;margin-top:10px">
-          <input id="agent-msg-${a.name}" placeholder="Chat with ${a.name}..." style="flex:1;font-size:12px">
-          <button class="btn btn-primary btn-sm" onclick="chatWithAgent('${a.name}')" style="font-size:11px">Send</button>
-          <button class="btn btn-outline btn-sm" onclick="deleteAgent('${a.name}')" style="font-size:11px;color:var(--red)">🗑️</button>
+          <input id="agent-msg-${a.name}" placeholder="Chat with ${a.name}..." style="flex:1;font-size:12px" onkeydown="if(event.key==='Enter')chatWithAgent('${safeName}')">
+          <button class="btn btn-primary btn-sm" onclick="chatWithAgent('${safeName}')" style="font-size:11px">Send</button>
+          <button class="btn btn-outline btn-sm" onclick="deleteAgent('${safeName}')" style="font-size:11px;color:var(--red)">🗑️</button>
         </div>
         <div id="agent-response-${a.name}" style="margin-top:8px;font-size:12px;color:var(--cyan);display:none"></div>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
   } catch(e) { console.error('Load agents:', e); }
 }
 
@@ -1637,7 +1667,7 @@ async function chatWithAgent(name) {
   respEl.innerHTML = '<span style="color:var(--text2)">Thinking...</span>';
   
   try {
-    const res = await authFetch(API + `/api/v1/agents/${name}/chat`, {
+    const res = await authFetch(API + '/api/v1/agents/' + encodeURIComponent(name) + '/chat', {
       method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ message: msg })
     });
@@ -1646,6 +1676,32 @@ async function chatWithAgent(name) {
       ? `<div style="background:var(--bg);padding:8px;border-radius:8px;border:1px solid var(--border)">${r.response.replace(/</g,'&lt;').replace(/\n/g,'<br>')}</div>`
       : `<span style="color:var(--red)">❌ ${r.error}</span>`;
   } catch(e) { respEl.innerHTML = `<span style="color:var(--red)">❌ ${e.message}</span>`; }
+}
+
+function editAgent(name, role, desc) {
+  document.getElementById('edit-agent-name-hidden').value = name;
+  document.getElementById('edit-agent-title').textContent = name;
+  document.getElementById('edit-agent-role').value = role;
+  document.getElementById('edit-agent-desc').value = desc.replace(/&quot;/g, '"');
+  document.getElementById('agent-edit-modal').style.display = 'flex';
+}
+
+async function saveAgentEdit() {
+  const name = document.getElementById('edit-agent-name-hidden').value;
+  const role = document.getElementById('edit-agent-role').value;
+  const desc = document.getElementById('edit-agent-desc').value.trim();
+  try {
+    const res = await authFetch(API + '/api/v1/agents/' + encodeURIComponent(name), {
+      method: 'PUT', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ role, description: desc })
+    });
+    const r = await res.json();
+    if (r.ok) {
+      toast('✅ Agent "' + name + '" đã cập nhật!');
+      document.getElementById('agent-edit-modal').style.display = 'none';
+      loadAgents();
+    } else toast('❌ ' + r.message);
+  } catch(e) { toast('❌ ' + e.message); }
 }
 
 async function broadcastMessage() {
@@ -1792,6 +1848,35 @@ function renderGroupMessages() {
 }
 
 function escHtml(s) { return (s||'').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>'); }
+
+// ═══ WEBCHAT AGENT SELECTOR ═══
+let _chatAgentName = ''; // empty = default WS agent
+
+async function refreshChatAgents() {
+  try {
+    const res = await authFetch(API + '/api/v1/agents');
+    const data = await res.json();
+    const sel = document.getElementById('chat-agent-select');
+    sel.innerHTML = '<option value="">🤖 Default Agent (WS)</option>';
+    if (data.ok && data.agents && data.agents.length > 0) {
+      data.agents.forEach(a => {
+        const icon = a.role === 'coder' ? '💻' : a.role === 'researcher' ? '🔬' : a.role === 'writer' ? '✍️' : '🤖';
+        sel.innerHTML += `<option value="${a.name}">${icon} ${a.name} (${a.role})</option>`;
+      });
+    }
+  } catch(e) { console.log('refreshChatAgents:', e); }
+}
+
+function onChatAgentChange() {
+  _chatAgentName = document.getElementById('chat-agent-select').value;
+  const info = document.getElementById('chat-agent-info');
+  if (_chatAgentName) {
+    info.style.display = '';
+    info.innerHTML = `🤖 Chat trực tiếp với agent <strong>${_chatAgentName}</strong> qua REST API (không qua WS)`;
+  } else {
+    info.style.display = 'none';
+  }
+}
 
 async function sendGroupMessage() {
   if (_activeGroupIdx < 0) return;
@@ -2036,13 +2121,12 @@ function handleWS(msg) {
 function sendChat() {
   const input = document.getElementById('chat-input');
   const text = input.value.trim();
-  if (!text || !ws || ws.readyState !== 1) return;
+  if (!text) return;
   input.value = '';
 
-  // Slash commands
+  // Slash commands (always via WS)
   if (text === '/status') {
-    ws.send(JSON.stringify({type:'status'}));
-    addMsg('/status', 'user');
+    if (ws && ws.readyState === 1) { ws.send(JSON.stringify({type:'status'})); addMsg('/status', 'user'); }
     return;
   }
   if (text === '/reset') {
@@ -2056,7 +2140,40 @@ function sendChat() {
   }
 
   addMsg(text, 'user');
+
+  // If a specific agent is selected, use REST API (not WS)
+  if (_chatAgentName) {
+    sendChatToAgent(_chatAgentName, text);
+    return;
+  }
+
+  // Default: use WebSocket
+  if (!ws || ws.readyState !== 1) {
+    addMsg('\u274c WebSocket ch\u01b0a k\u1ebft n\u1ed1i. Ch\u1ecdn m\u1ed9t Agent t\u1eeb dropdown ho\u1eb7c \u0111\u1ee3i k\u1ebft n\u1ed1i WS.', 'system');
+    return;
+  }
   ws.send(JSON.stringify({type:'chat',content:text,stream:true}));
+}
+
+async function sendChatToAgent(agentName, text) {
+  const typing = document.getElementById('chat-typing');
+  typing.style.display = '';
+  try {
+    const res = await authFetch(API + '/api/v1/agents/' + encodeURIComponent(agentName) + '/chat', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ message: text })
+    });
+    typing.style.display = 'none';
+    const r = await res.json();
+    if (r.ok) {
+      addMsg('\ud83e\udd16 ' + agentName + ': ' + r.response, 'bot');
+    } else {
+      addMsg('\u274c ' + (r.error || 'Agent error'), 'system');
+    }
+  } catch(e) {
+    typing.style.display = 'none';
+    addMsg('\u274c ' + e.message, 'system');
+  }
 }
 
 function addMsg(text, role) {
@@ -2154,7 +2271,7 @@ const I18N = {
     'agents.title':'Đa tác tử AI','agents.subtitle':'Tạo và quản lý nhiều agent AI với vai trò khác nhau',
     'agents.create':'Tạo Agent','agents.total':'Tổng Agent','agents.default':'Agent mặc định',
     'agents.messages':'Tin nhắn','agents.create_new':'Tạo Agent mới','agents.broadcast':'Phát tin nhắn',
-    'agents.msg':'Tin nhắn','agents.send_all':'Gửi tất cả',
+    'agents.msg':'Tin nhắn','agents.send_all':'Gửi tất cả','agents.edit':'Sửa Agent',
     // Agent Groups
     'groups.title':'Nhóm Agent','groups.subtitle':'Tạo nhóm các Agent AI cùng trao đổi và phối hợp — như OpenClaw',
     'groups.create':'Tạo nhóm','groups.total':'Tổng nhóm','groups.agents_count':'Agent trong nhóm',
@@ -2259,7 +2376,7 @@ const I18N = {
     'agents.title':'Multi-Agent AI','agents.subtitle':'Create and manage multiple AI agents with different roles',
     'agents.create':'Create Agent','agents.total':'Total Agents','agents.default':'Default Agent',
     'agents.messages':'Messages','agents.create_new':'Create New Agent','agents.broadcast':'Broadcast Message',
-    'agents.msg':'Message','agents.send_all':'Send to All',
+    'agents.msg':'Message','agents.send_all':'Send to All','agents.edit':'Edit Agent',
     // Agent Groups
     'groups.title':'Agent Groups','groups.subtitle':'Create groups of AI Agents to discuss and collaborate — like OpenClaw',
     'groups.create':'Create Group','groups.total':'Total Groups','groups.agents_count':'Agents in Groups',

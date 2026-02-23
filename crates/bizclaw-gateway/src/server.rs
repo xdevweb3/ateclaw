@@ -1,6 +1,6 @@
 //! HTTP server implementation using Axum.
 
-use axum::{Router, Json, routing::{get, post}, extract::State};
+use axum::{Router, Json, routing::{get, post, put}, extract::State};
 use axum::response::Html;
 use bizclaw_core::config::{GatewayConfig, BizClawConfig};
 use std::sync::{Arc, Mutex};
@@ -114,6 +114,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/v1/agents", get(super::routes::list_agents))
         .route("/api/v1/agents", post(super::routes::create_agent))
         .route("/api/v1/agents/{name}", axum::routing::delete(super::routes::delete_agent))
+        .route("/api/v1/agents/{name}", put(super::routes::update_agent))
         .route("/api/v1/agents/{name}/chat", post(super::routes::agent_chat))
         .route("/api/v1/agents/broadcast", post(super::routes::agent_broadcast))
         // Brain Workspace API

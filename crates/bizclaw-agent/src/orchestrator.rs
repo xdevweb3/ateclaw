@@ -198,6 +198,17 @@ impl Orchestrator {
     pub fn get_agent_mut(&mut self, name: &str) -> Option<&mut Agent> {
         self.agents.get_mut(name).map(|a| &mut a.agent)
     }
+
+    /// Update agent metadata (role, description).
+    pub fn update_agent(&mut self, name: &str, role: Option<&str>, description: Option<&str>) -> bool {
+        if let Some(named) = self.agents.get_mut(name) {
+            if let Some(r) = role { named.role = r.to_string(); }
+            if let Some(d) = description { named.description = d.to_string(); }
+            true
+        } else {
+            false
+        }
+    }
 }
 
 impl Default for Orchestrator {
