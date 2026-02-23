@@ -18,6 +18,10 @@ pub struct Task {
     pub status: TaskStatus,
     /// Notification channel preference (where to send result).
     pub notify_via: Option<String>,
+    /// Which agent should execute AgentPrompt tasks (None = default agent).
+    pub agent_name: Option<String>,
+    /// Where to deliver the result: "telegram:chat_id", "email:addr", "webhook:url", "dashboard".
+    pub deliver_to: Option<String>,
     /// Created timestamp.
     pub created_at: DateTime<Utc>,
     /// Last triggered timestamp.
@@ -78,6 +82,8 @@ impl Task {
             task_type: TaskType::Once { at },
             status: TaskStatus::Pending,
             notify_via: None,
+            agent_name: None,
+            deliver_to: None,
             created_at: Utc::now(),
             last_run: None,
             next_run: Some(at),
@@ -96,6 +102,8 @@ impl Task {
             task_type: TaskType::Interval { every_secs },
             status: TaskStatus::Pending,
             notify_via: None,
+            agent_name: None,
+            deliver_to: None,
             created_at: Utc::now(),
             last_run: None,
             next_run: Some(next),
@@ -115,6 +123,8 @@ impl Task {
             },
             status: TaskStatus::Pending,
             notify_via: None,
+            agent_name: None,
+            deliver_to: None,
             created_at: Utc::now(),
             last_run: None,
             next_run: None, // Computed by cron parser

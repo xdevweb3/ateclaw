@@ -1259,6 +1259,15 @@ pub async fn scheduler_list_tasks(State(state): State<Arc<AppState>>) -> Json<se
         .list_tasks()
         .iter()
         .map(|t| {
+            let (action_type, prompt, cron) = match &t.action {
+                bizclaw_scheduler::tasks::TaskAction::AgentPrompt(p) => ("agent_prompt", Some(p.as_str()), None),
+                bizclaw_scheduler::tasks::TaskAction::Notify(m) => ("notify", Some(m.as_str()), None),
+                bizclaw_scheduler::tasks::TaskAction::Webhook { url, .. } => ("webhook", Some(url.as_str()), None),
+            };
+            let cron_expr = match &t.task_type {
+                bizclaw_scheduler::tasks::TaskType::Cron { expression } => Some(expression.as_str()),
+                _ => cron,
+            };
             serde_json::json!({
                 "id": t.id,
                 "name": t.name,
@@ -1267,6 +1276,11 @@ pub async fn scheduler_list_tasks(State(state): State<Arc<AppState>>) -> Json<se
                 "run_count": t.run_count,
                 "next_run": t.next_run.map(|d| d.to_rfc3339()),
                 "last_run": t.last_run.map(|d| d.to_rfc3339()),
+                "action_type": action_type,
+                "prompt": prompt,
+                "cron": cron_expr,
+                "agent_name": t.agent_name,
+                "deliver_to": t.deliver_to,
             })
         })
         .collect();
@@ -1279,13 +1293,29 @@ pub async fn scheduler_add_task(
     Json(body): Json<serde_json::Value>,
 ) -> Json<serde_json::Value> {
     let name = body["name"].as_str().unwrap_or("unnamed");
+    let prompt = body["prompt"].as_str().unwrap_or("");
     let action_str = body["action"].as_str().unwrap_or("");
-    let action = bizclaw_scheduler::tasks::TaskAction::Notify(action_str.to_string());
+    let agent_name = body["agent_name"].as_str().filter(|s| !s.is_empty()).map(String::from);
+    let deliver_to = body["deliver_to"].as_str().filter(|s| !s.is_empty()).map(String::from);
 
-    let task_type = body["type"].as_str().unwrap_or("interval");
-    let task = match task_type {
+    // If prompt is provided, use AgentPrompt; otherwise Notify
+    let action = if !prompt.is_empty() {
+        bizclaw_scheduler::tasks::TaskAction::AgentPrompt(prompt.to_string())
+    } else if !action_str.is_empty() {
+        bizclaw_scheduler::tasks::TaskAction::Notify(action_str.to_string())
+    } else {
+        return Json(serde_json::json!({"ok": false, "error": "Either 'prompt' or 'action' is required"}));
+    };
+
+    let task_type = body["task_type"].as_str()
+        .or_else(|| body["type"].as_str())
+        .unwrap_or("cron");
+
+    let mut task = match task_type {
         "cron" => {
-            let expr = body["expression"].as_str().unwrap_or("0 * * * *");
+            let expr = body["cron"].as_str()
+                .or_else(|| body["expression"].as_str())
+                .unwrap_or("0 * * * *");
             bizclaw_scheduler::Task::cron(name, expr, action)
         }
         "once" => {
@@ -1298,6 +1328,11 @@ pub async fn scheduler_add_task(
             bizclaw_scheduler::Task::interval(name, secs, action)
         }
     };
+
+    // Set optional fields
+    task.agent_name = agent_name;
+    task.deliver_to = deliver_to.clone();
+    task.notify_via = deliver_to;
 
     let id = task.id.clone();
     state.scheduler.lock().await.add_task(task);

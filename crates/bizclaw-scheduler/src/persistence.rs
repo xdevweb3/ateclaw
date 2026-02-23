@@ -34,6 +34,8 @@ impl SchedulerDb {
                 task_type_data TEXT NOT NULL,    -- JSON: {at:...} or {expression:...} or {every_secs:...}
                 status TEXT NOT NULL DEFAULT 'pending',
                 notify_via TEXT,
+                agent_name TEXT,                 -- which agent runs the task
+                deliver_to TEXT,                 -- where to send result: telegram:id, email:addr, etc
                 created_at TEXT NOT NULL,
                 last_run TEXT,
                 next_run TEXT,
@@ -97,9 +99,14 @@ impl SchedulerDb {
                 created_at TEXT NOT NULL,
                 sent_at TEXT
             );
-        ",
+         ",
             )
             .map_err(|e| format!("Migration: {e}"))?;
+
+        // Add new columns for existing DBs (safe to fail if already exist)
+        let _ = self.conn.execute("ALTER TABLE scheduler_tasks ADD COLUMN agent_name TEXT", []);
+        let _ = self.conn.execute("ALTER TABLE scheduler_tasks ADD COLUMN deliver_to TEXT", []);
+
         Ok(())
     }
 
@@ -135,9 +142,9 @@ impl SchedulerDb {
         self.conn
             .execute(
                 "INSERT OR REPLACE INTO scheduler_tasks 
-                 (id, name, action_type, action_data, task_type, task_type_data, status, notify_via, 
-                  created_at, last_run, next_run, run_count, enabled)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                 (id, name, action_type, action_data, task_type, task_type_data, status, notify_via,
+                  agent_name, deliver_to, created_at, last_run, next_run, run_count, enabled)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
                 rusqlite::params![
                     task.id,
                     task.name,
@@ -147,6 +154,8 @@ impl SchedulerDb {
                     type_data.to_string(),
                     status,
                     task.notify_via,
+                    task.agent_name,
+                    task.deliver_to,
                     task.created_at.to_rfc3339(),
                     task.last_run.map(|t| t.to_rfc3339()),
                     task.next_run.map(|t| t.to_rfc3339()),
@@ -162,7 +171,7 @@ impl SchedulerDb {
     pub fn load_tasks(&self) -> Vec<Task> {
         let mut stmt = match self
             .conn
-            .prepare("SELECT * FROM scheduler_tasks ORDER BY created_at")
+            .prepare("SELECT id, name, action_type, action_data, task_type, task_type_data, status, notify_via, agent_name, deliver_to, created_at, last_run, next_run, run_count, enabled FROM scheduler_tasks ORDER BY created_at")
         {
             Ok(s) => s,
             Err(_) => return Vec::new(),
@@ -178,11 +187,13 @@ impl SchedulerDb {
                 let task_type_data_str: String = row.get(5)?;
                 let status_str: String = row.get(6)?;
                 let notify_via: Option<String> = row.get(7)?;
-                let created_at_str: String = row.get(8)?;
-                let last_run_str: Option<String> = row.get(9)?;
-                let next_run_str: Option<String> = row.get(10)?;
-                let run_count: u32 = row.get(11)?;
-                let enabled: bool = row.get::<_, i32>(12)? != 0;
+                let agent_name: Option<String> = row.get(8)?;
+                let deliver_to: Option<String> = row.get(9)?;
+                let created_at_str: String = row.get(10)?;
+                let last_run_str: Option<String> = row.get(11)?;
+                let next_run_str: Option<String> = row.get(12)?;
+                let run_count: u32 = row.get(13)?;
+                let enabled: bool = row.get::<_, i32>(14)? != 0;
 
                 let action_data: serde_json::Value =
                     serde_json::from_str(&action_data_str).unwrap_or_default();
@@ -251,6 +262,8 @@ impl SchedulerDb {
                     task_type,
                     status,
                     notify_via,
+                    agent_name,
+                    deliver_to,
                     created_at,
                     last_run,
                     next_run,

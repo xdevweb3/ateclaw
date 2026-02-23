@@ -768,7 +768,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <!-- ═══ SCHEDULER ═══ -->
     <div id="page-scheduler" style="display:none">
       <div class="page-header">
-        <div><h1>⏰ Lịch trình</h1><div class="sub">Quản lý tác vụ lên lịch & thông báo tự động</div></div>
+        <div><h1>⏰ Lịch trình</h1><div class="sub">Lên lịch để Agent tự động chạy prompt và gửi kết quả đến kênh bạn chọn</div></div>
         <button class="btn btn-primary" onclick="toggleSchedulerForm()">+ Thêm tác vụ</button>
       </div>
       <!-- Add Task Form -->
@@ -777,11 +777,37 @@ tr:hover td{background:rgba(255,255,255,.02)}
         <div class="ch-fields">
           <label>Tên tác vụ</label>
           <input type="text" id="sched-name" placeholder="daily-report">
-          <label>Mô tả / Prompt</label>
-          <textarea id="sched-prompt" placeholder="Tóm tắt doanh thu hôm nay từ hệ thống..." rows="3"></textarea>
-          <label>Lịch (Cron expression)</label>
-          <input type="text" id="sched-cron" placeholder="0 9 * * * (mỗi ngày 9:00)">
-          <div style="font-size:11px;color:var(--text2);margin-top:-6px">Ví dụ: <code>0 9 * * *</code> = 9:00 hàng ngày, <code>*/30 * * * *</code> = mỗi 30 phút, <code>0 8 * * 1</code> = 8:00 T2 hàng tuần</div>
+
+          <label>🤖 Agent thực thi</label>
+          <select id="sched-agent" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text)">
+            <option value="">(Mặc định — Agent chính)</option>
+          </select>
+          <div style="font-size:11px;color:var(--text2);margin-top:-6px">Chọn Agent sẽ xử lý prompt này</div>
+
+          <label>📝 Prompt (nội dung gửi cho Agent)</label>
+          <textarea id="sched-prompt" placeholder="Tóm tắt doanh thu hôm nay, phân tích xu hướng bán hàng tuần này..." rows="3"></textarea>
+
+          <label>📅 Lịch chạy (Cron expression)</label>
+          <input type="text" id="sched-cron" placeholder="0 9 * * *">
+          <div style="font-size:11px;color:var(--text2);margin-top:-6px">
+            <code>0 9 * * *</code> = 9:00 hàng ngày &nbsp;|&nbsp;
+            <code>*/30 * * * *</code> = mỗi 30 phút &nbsp;|&nbsp;
+            <code>0 8 * * 1</code> = 8:00 T2 hàng tuần
+          </div>
+
+          <label>📤 Gửi kết quả đến</label>
+          <select id="sched-deliver-channel" onchange="schedDeliverChanged()" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text)">
+            <option value="dashboard">📊 Dashboard (chỉ hiển thị trên web)</option>
+            <option value="telegram">📱 Telegram</option>
+            <option value="email">📧 Email</option>
+            <option value="webhook">🔗 Webhook URL</option>
+          </select>
+
+          <div id="sched-deliver-target-wrap" style="display:none">
+            <label id="sched-deliver-target-label">ID người nhận</label>
+            <input type="text" id="sched-deliver-target" placeholder="">
+            <div id="sched-deliver-hint" style="font-size:11px;color:var(--text2);margin-top:-6px"></div>
+          </div>
         </div>
         <div class="ch-actions" style="margin-top:12px">
           <button class="btn btn-primary btn-sm" onclick="addSchedulerTask()">✅ Tạo</button>
@@ -1665,6 +1691,17 @@ async function loadConfigToml() {
 
 // ═══ SCHEDULER PAGE ═══
 async function loadSchedulerPage() {
+  // Load agents for dropdown
+  try {
+    const agentRes = await authFetch(API + '/api/v1/agents');
+    const agentData = await agentRes.json();
+    const select = document.getElementById('sched-agent');
+    select.innerHTML = '<option value="">(Mặc định — Agent chính)</option>';
+    (agentData.agents || []).forEach(a => {
+      select.innerHTML += `<option value="${a.name}">${a.name} (${a.provider}/${a.model})</option>`;
+    });
+  } catch(e) {}
+
   // Load tasks
   try {
     const res = await authFetch(API + '/api/v1/scheduler/tasks');
@@ -1674,20 +1711,30 @@ async function loadSchedulerPage() {
     if (tasks.length === 0) {
       document.getElementById('scheduler-tasks-list').innerHTML = '<div style="color:var(--text2);text-align:center;padding:30px">⏰ Chưa có tác vụ nào. Bấm "+ Thêm tác vụ" để bắt đầu.</div>';
     } else {
+      const deliverLabel = (d) => {
+        if (!d) return '📊 Dashboard';
+        if (d === 'dashboard') return '📊 Dashboard';
+        if (d.startsWith('telegram:')) return '📱 Telegram → ' + d.split(':')[1];
+        if (d.startsWith('email:')) return '📧 Email → ' + d.split(':')[1];
+        if (d.startsWith('webhook:')) return '🔗 Webhook';
+        return d;
+      };
       document.getElementById('scheduler-tasks-list').innerHTML = tasks.map(t => `
         <div class="ch-card" style="margin-bottom:12px">
           <div class="ch-header">
             <span class="ch-name">${t.name || t.id || '—'}</span>
             <div style="display:flex;align-items:center;gap:8px">
-              <span class="badge badge-${t.active !== false ? 'green' : 'orange'}">${t.active !== false ? '● Active' : 'Paused'}</span>
+              <span class="badge badge-${t.enabled !== false ? 'green' : 'orange'}">${t.enabled !== false ? '● Active' : 'Paused'}</span>
             </div>
           </div>
-          <div class="ch-fields" style="font-size:12px">
-            ${t.prompt ? `<div><strong>Prompt:</strong> ${t.prompt.substring(0, 200)}${t.prompt.length > 200 ? '...' : ''}</div>` : ''}
-            ${t.cron ? `<div><strong>Cron:</strong> <code>${t.cron}</code></div>` : ''}
-            ${t.task_type ? `<div><strong>Type:</strong> ${t.task_type}</div>` : ''}
-            ${t.next_run ? `<div><strong>Next run:</strong> ${t.next_run}</div>` : ''}
-            ${t.last_run ? `<div><strong>Last run:</strong> ${t.last_run}</div>` : ''}
+          <div class="ch-fields" style="font-size:12px;display:grid;gap:4px">
+            ${t.agent_name ? `<div>🤖 <strong>Agent:</strong> ${t.agent_name}</div>` : '<div>🤖 <strong>Agent:</strong> (mặc định)</div>'}
+            ${t.prompt ? `<div>📝 <strong>Prompt:</strong> ${t.prompt.substring(0, 150)}${t.prompt.length > 150 ? '...' : ''}</div>` : ''}
+            ${t.cron ? `<div>📅 <strong>Cron:</strong> <code>${t.cron}</code></div>` : ''}
+            <div>📤 <strong>Gửi đến:</strong> ${deliverLabel(t.deliver_to)}</div>
+            ${t.next_run ? `<div>⏳ <strong>Lần chạy tiếp:</strong> ${new Date(t.next_run).toLocaleString()}</div>` : ''}
+            ${t.last_run ? `<div>✅ <strong>Lần chạy cuối:</strong> ${new Date(t.last_run).toLocaleString()}</div>` : ''}
+            <div>🔄 <strong>Đã chạy:</strong> ${t.run_count || 0} lần</div>
           </div>
           <div class="ch-actions" style="margin-top:8px">
             <button class="btn btn-danger btn-sm" onclick="deleteSchedulerTask('${t.id}')">🗑️ Xóa</button>
@@ -1728,16 +1775,61 @@ function toggleSchedulerForm() {
   form.style.display = form.style.display === 'none' ? '' : 'none';
 }
 
+function schedDeliverChanged() {
+  const ch = document.getElementById('sched-deliver-channel').value;
+  const wrap = document.getElementById('sched-deliver-target-wrap');
+  const label = document.getElementById('sched-deliver-target-label');
+  const input = document.getElementById('sched-deliver-target');
+  const hint = document.getElementById('sched-deliver-hint');
+  if (ch === 'dashboard') {
+    wrap.style.display = 'none';
+  } else {
+    wrap.style.display = '';
+    if (ch === 'telegram') {
+      label.textContent = 'Telegram Chat ID';
+      input.placeholder = '123456789 hoặc -100xxxxxxxxxx (group)';
+      hint.textContent = 'Lấy chat ID bằng cách gửi /start cho @userinfobot trên Telegram';
+    } else if (ch === 'email') {
+      label.textContent = 'Email người nhận';
+      input.placeholder = 'admin@company.com';
+      hint.textContent = 'Cần cấu hình SMTP trong mục Kênh liên lạc > Email';
+    } else if (ch === 'webhook') {
+      label.textContent = 'Webhook URL';
+      input.placeholder = 'https://hooks.slack.com/services/...';
+      hint.textContent = 'Kết quả sẽ được POST dưới dạng JSON đến URL này';
+    }
+  }
+}
+
 async function addSchedulerTask() {
   const name = document.getElementById('sched-name').value.trim();
   const prompt = document.getElementById('sched-prompt').value.trim();
   const cron = document.getElementById('sched-cron').value.trim();
+  const agentName = document.getElementById('sched-agent').value;
+  const deliverCh = document.getElementById('sched-deliver-channel').value;
+  const deliverTarget = document.getElementById('sched-deliver-target')?.value?.trim() || '';
+
   if (!name) { toast('❌ Tên tác vụ không được để trống'); return; }
+  if (!prompt) { toast('❌ Prompt không được để trống — Agent cần biết làm gì'); return; }
   if (!cron) { toast('❌ Cron expression không được để trống'); return; }
+  if (deliverCh !== 'dashboard' && !deliverTarget) {
+    toast('❌ Vui lòng nhập ID/địa chỉ người nhận cho kênh ' + deliverCh);
+    return;
+  }
+
+  const deliverTo = deliverCh === 'dashboard' ? 'dashboard' : `${deliverCh}:${deliverTarget}`;
+
   try {
     const res = await authFetch(API + '/api/v1/scheduler/tasks', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ name, prompt: prompt || name, cron, task_type: 'cron' })
+      body: JSON.stringify({
+        name,
+        prompt,
+        cron,
+        task_type: 'cron',
+        agent_name: agentName || undefined,
+        deliver_to: deliverTo,
+      })
     });
     const r = await res.json();
     if (r.ok) {
@@ -1746,6 +1838,9 @@ async function addSchedulerTask() {
       document.getElementById('sched-name').value = '';
       document.getElementById('sched-prompt').value = '';
       document.getElementById('sched-cron').value = '';
+      document.getElementById('sched-agent').value = '';
+      document.getElementById('sched-deliver-channel').value = 'dashboard';
+      schedDeliverChanged();
       await loadSchedulerPage();
     } else {
       toast('❌ ' + (r.error || 'Lỗi tạo tác vụ'));
