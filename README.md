@@ -10,7 +10,7 @@ BizClaw là nền tảng AI Agent kiến trúc trait-driven, có thể chạy **
 [![Crates](https://img.shields.io/badge/crates-14-success)]()
 [![LOC](https://img.shields.io/badge/lines-23733-informational)]()
 
-<!-- AUTO-GENERATED STATS — updated 2026-02-23 @ 5f6b7dc -->
+<!-- AUTO-GENERATED STATS — updated 2026-02-23 @ 0e54a3e -->
 
 ---
 
@@ -36,6 +36,36 @@ BizClaw là nền tảng AI Agent kiến trúc trait-driven, có thể chạy **
 | **🔒 Security** | Command allowlist, AES-256, HMAC-SHA256, JWT + bcrypt |
 | **💾 Memory** | SQLite + RAG-style retrieval, keyword search, relevance scoring |
 | **⚡ SIMD** | ARM NEON, x86 SSE2/AVX2 auto-dispatch |
+| **🤖 24 Agent Templates** | 6 danh mục, system prompt chuyên sâu, cài 1 click |
+| **💾 Persistence** | agents.json auto-save/restore, không mất data khi restart |
+
+### 🤖 Agent Gallery — 24 Mẫu sẵn có
+
+Cài đặt agent chuyên biệt chỉ 1 click. Mỗi agent có **system prompt** tích hợp skill chuyên sâu:
+
+| Danh mục | Agent | Skill tích hợp |
+|----------|-------|---------------|
+| 🧠 **Nền tảng** | Navigator, Optimizer, Architect, Manager | Tìm kiếm công cụ, tối ưu token, thiết kế hệ thống, quản lý dự án |
+| ✍️ **Sáng tạo** | Brainstorm, Copywriter, Editor, Social Media | Ý tưởng sáng tạo, content marketing, biên tập, social media |
+| 💻 **Lập trình** | Full-Stack Dev, Debugger, QA Tester, Security Auditor | React/Next.js, debug systematic, TDD, OWASP Top 10 |
+| 🎨 **Thiết kế** | UI Designer, Data Viz, Brand Designer | 8px grid, D3.js/Chart.js, visual identity |
+| 📈 **Marketing** | Growth Hacker, SEO Expert, Pricing Strategist, Ad Specialist | AARRR, SEO audit, SaaS pricing, Google/Meta Ads |
+| 📋 **Năng suất** | Doc Writer, Data Analyst, Translator, Email Pro | API docs, SQL/Excel, VI↔EN, email sequences |
+
+### 💰 Tiết kiệm token — Mỗi Agent chọn Provider riêng
+
+Mỗi agent có thể chọn nhà cung cấp & mô hình riêng → tiết kiệm 60-80% chi phí:
+
+\`\`\`
+Agent "Translator"     → Ollama/qwen2.5 (miễn phí, local)
+Agent "Full-Stack Dev" → Anthropic/claude-sonnet-4 (mạnh)
+Agent "Social Media"   → Gemini/flash (nhanh, rẻ)
+Agent "Editor"         → DeepSeek/chat (giá tốt)
+\`\`\`
+
+### 👥 Group Chat — Đội ngũ Agent cộng tác
+
+Tạo nhóm nhiều agent cùng nhà cung cấp khác nhau làm việc cùng lúc. Gửi 1 câu hỏi → tất cả agent trong nhóm phản hồi theo chuyên môn.
 
 ### 🏗️ Kiến trúc
 
@@ -150,7 +180,7 @@ ollama pull llama3.2      # ~3.8GB
 | **Channels** | 18 |
 | **Tools** | 15 + MCP |
 | **Binary Size** | bizclaw 11M, platform 7.1M |
-| **Last Updated** | 2026-02-23 (5f6b7dc) |
+| **Last Updated** | 2026-02-23 (0e54a3e) |
 
 ---
 
