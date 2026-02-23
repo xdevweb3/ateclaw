@@ -615,6 +615,8 @@ tr:hover td{background:rgba(255,255,255,.02)}
             <option value="analyst">Phân tích viên</option><option value="translator">Phiên dịch</option>
           </select></div>
           <div class="form-row"><span class="form-label" data-i18n="form.description">Mô tả</span><input id="edit-agent-desc"></div>
+          <div class="form-row"><span class="form-label">Nhà cung cấp</span><select id="edit-agent-provider" onchange="loadAgentModels(this.value,'edit-agent-model')"><option value="">— Giữ nguyên —</option></select></div>
+          <div class="form-row"><span class="form-label">Mô hình AI</span><select id="edit-agent-model"><option value="">— Giữ nguyên —</option></select></div>
           <!-- Channel Binding Section -->
           <div style="margin-top:16px;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--bg)">
             <div style="font-weight:600;margin-bottom:8px">🔗 Gán Agent với Kênh</div>
@@ -671,11 +673,12 @@ tr:hover td{background:rgba(255,255,255,.02)}
           <option value="editor">Biên tập</option>
         </select></div>
         <div class="form-row"><span class="form-label">Danh mục</span><select id="new-skill-cat">
-          <option value="productivity">📋 Năng suất</option><option value="dev">💻 Lập trình</option>
-          <option value="creative">✍️ Sáng tạo</option><option value="marketing">📈 Marketing</option>
-          <option value="design">🎨 Thiết kế</option><option value="ai">🧠 AI</option>
-          <option value="search">🔍 Tìm kiếm</option><option value="finance">💰 Tài chính</option>
-          <option value="utility">🔧 Tiện ích</option><option value="analytics">📊 Phân tích</option>
+          <option value="hr">👥 Nhân sự</option><option value="sales">🤝 Bán hàng</option>
+          <option value="finance">💰 Tài chính</option><option value="operations">📦 Vận hành</option>
+          <option value="legal">⚖️ Pháp lý</option><option value="customer-service">💬 CSKH</option>
+          <option value="marketing">📣 Marketing</option><option value="management">📊 Quản trị</option>
+          <option value="it">🖥️ IT</option><option value="training">🎓 Đào tạo</option>
+          <option value="ecommerce">🛍️ TMĐT</option><option value="productivity">📧 Năng suất</option>
         </select></div>
         <div class="form-row"><span class="form-label">Mô tả</span><input id="new-skill-desc" placeholder="Mô tả ngắn về skill..."></div>
         <div class="form-row"><span class="form-label">System Prompt</span><textarea id="new-skill-prompt" placeholder="You are a..." style="min-height:100px"></textarea></div>
@@ -688,16 +691,18 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <!-- Category filter -->
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px" id="gallery-filters">
         <button class="btn btn-primary btn-sm gallery-filter-btn" onclick="filterGallery('all')" style="font-size:11px">Tất cả</button>
-        <button class="btn btn-outline btn-sm gallery-filter-btn" onclick="filterGallery('productivity')" style="font-size:11px">📋 Năng suất</button>
-        <button class="btn btn-outline btn-sm gallery-filter-btn" onclick="filterGallery('dev')" style="font-size:11px">💻 Lập trình</button>
-        <button class="btn btn-outline btn-sm gallery-filter-btn" onclick="filterGallery('creative')" style="font-size:11px">✍️ Sáng tạo</button>
-        <button class="btn btn-outline btn-sm gallery-filter-btn" onclick="filterGallery('marketing')" style="font-size:11px">📈 Marketing</button>
-        <button class="btn btn-outline btn-sm gallery-filter-btn" onclick="filterGallery('design')" style="font-size:11px">🎨 Thiết kế</button>
-        <button class="btn btn-outline btn-sm gallery-filter-btn" onclick="filterGallery('ai')" style="font-size:11px">🧠 AI</button>
-        <button class="btn btn-outline btn-sm gallery-filter-btn" onclick="filterGallery('search')" style="font-size:11px">🔍 Tìm kiếm</button>
+        <button class="btn btn-outline btn-sm gallery-filter-btn" onclick="filterGallery('hr')" style="font-size:11px">👥 Nhân sự</button>
+        <button class="btn btn-outline btn-sm gallery-filter-btn" onclick="filterGallery('sales')" style="font-size:11px">🤝 Bán hàng</button>
         <button class="btn btn-outline btn-sm gallery-filter-btn" onclick="filterGallery('finance')" style="font-size:11px">💰 Tài chính</button>
-        <button class="btn btn-outline btn-sm gallery-filter-btn" onclick="filterGallery('utility')" style="font-size:11px">🔧 Tiện ích</button>
-        <button class="btn btn-outline btn-sm gallery-filter-btn" onclick="filterGallery('analytics')" style="font-size:11px">📊 Phân tích</button>
+        <button class="btn btn-outline btn-sm gallery-filter-btn" onclick="filterGallery('operations')" style="font-size:11px">📦 Vận hành</button>
+        <button class="btn btn-outline btn-sm gallery-filter-btn" onclick="filterGallery('legal')" style="font-size:11px">⚖️ Pháp lý</button>
+        <button class="btn btn-outline btn-sm gallery-filter-btn" onclick="filterGallery('customer-service')" style="font-size:11px">💬 CSKH</button>
+        <button class="btn btn-outline btn-sm gallery-filter-btn" onclick="filterGallery('marketing')" style="font-size:11px">📣 Marketing</button>
+        <button class="btn btn-outline btn-sm gallery-filter-btn" onclick="filterGallery('management')" style="font-size:11px">📊 Quản trị</button>
+        <button class="btn btn-outline btn-sm gallery-filter-btn" onclick="filterGallery('it')" style="font-size:11px">🖥️ IT</button>
+        <button class="btn btn-outline btn-sm gallery-filter-btn" onclick="filterGallery('training')" style="font-size:11px">🎓 Đào tạo</button>
+        <button class="btn btn-outline btn-sm gallery-filter-btn" onclick="filterGallery('ecommerce')" style="font-size:11px">🛍️ TMĐT</button>
+        <button class="btn btn-outline btn-sm gallery-filter-btn" onclick="filterGallery('productivity')" style="font-size:11px">📧 Năng suất</button>
       </div>
       <!-- Search -->
       <div style="margin-bottom:16px"><input id="gallery-search" placeholder="🔍 Tìm skill..." oninput="filterGalleryBySearch()" style="width:100%;padding:10px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px"></div>
@@ -1932,11 +1937,23 @@ async function deleteGallerySkill(id) {
 async function installGallerySkill(id) {
   const skill = _gallerySkills.find(s => s.id === id);
   if (!skill) { toast('❌ Skill not found', 'error'); return; }
+  let systemPrompt = skill.system_prompt || skill.prompt || '';
+  // If skill has MD file, fetch and append to system prompt
+  if (skill.has_md) {
+    try {
+      const mdRes = await authFetch(API + '/api/v1/gallery/' + encodeURIComponent(id) + '/md');
+      const mdData = await mdRes.json();
+      if (mdData.ok && mdData.content) {
+        systemPrompt += '\n\n---\n# Tài liệu tham khảo (Knowledge Base)\n\n' + mdData.content;
+        toast('📄 Đã gắn tài liệu MD vào Agent');
+      }
+    } catch(e) { /* MD load fail — continue without it */ }
+  }
   const body = {
     name: skill.name || id,
     role: skill.role || 'assistant',
     description: skill.description || skill.desc || '',
-    system_prompt: skill.system_prompt || skill.prompt || '',
+    system_prompt: systemPrompt,
   };
   try {
     const res = await authFetch(API + '/api/v1/agents', {
@@ -1972,25 +1989,26 @@ async function viewGalleryMd(id) {
 
 async function showCreateAgentForm() {
   document.getElementById('agent-create-form').style.display = '';
-  // Load providers dropdown
+  // Load providers dropdown — only show active or local providers
   const sel = document.getElementById('new-agent-provider');
-  if (sel.options.length <= 1) { // not yet populated
-    try {
-      const res = await authFetch(API + '/api/v1/providers');
-      const data = await res.json();
-      if (data.providers) {
-        _providersCache = data.providers;
-        data.providers.forEach(p => {
-          const opt = document.createElement('option');
-          opt.value = p.name;
-          const typeIcon = p.type === 'local' ? '🖥️' : '☁️';
-          const statusBadge = p.status === 'active' ? ' ⚡' : '';
-          opt.textContent = `${typeIcon} ${p.name}${statusBadge}`;
-          sel.appendChild(opt);
-        });
-      }
-    } catch(e) { console.log('providers load err:', e); }
-  }
+  sel.innerHTML = '<option value="">— Dùng mặc định —</option>';
+  try {
+    const res = await authFetch(API + '/api/v1/providers');
+    const data = await res.json();
+    if (data.providers) {
+      _providersCache = data.providers;
+      // Only show: active provider OR local providers (ollama/brain/llamacpp always available)
+      const usable = data.providers.filter(p => p.status === 'active' || p.type === 'local');
+      usable.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.name;
+        const typeIcon = p.type === 'local' ? '🖥️' : '☁️';
+        const statusBadge = p.status === 'active' ? ' ⚡' : '';
+        opt.textContent = `${typeIcon} ${p.name}${statusBadge}`;
+        sel.appendChild(opt);
+      });
+    }
+  } catch(e) { console.log('providers load err:', e); }
 }
 
 async function loadAgentModels(providerName, selectId) {
@@ -2066,9 +2084,9 @@ async function loadAgents() {
           <span style="font-size:24px">${icon}</span>
           <div style="flex:1">
             <div style="font-weight:600;color:var(--text)">${a.name} ${a.is_default ? '<span style="font-size:10px;background:var(--accent);color:#000;padding:2px 6px;border-radius:8px">DEFAULT</span>' : ''}</div>
-            <div style="font-size:11px;color:var(--text2)">${a.role} • ${a.provider} • ${a.tools} tools</div>
+            <div style="font-size:11px;color:var(--text2)">${a.role} • ${a.provider}${a.model ? '/' + a.model : ''} • ${a.tools} tools</div>
           </div>
-          <button class="btn btn-outline btn-sm" onclick="editAgent('${safeName}','${a.role}','${a.description.replace(/'/g, "\\'").replace(/"/g,'&quot;')}')" style="font-size:11px" title="Sửa">✏️</button>
+          <button class="btn btn-outline btn-sm" onclick="editAgent('${safeName}','${a.role}','${a.description.replace(/'/g, "\\'").replace(/"/g,'&quot;')}','${a.provider||''}','${a.model||''}')" style="font-size:11px" title="Sửa">✏️</button>
         </div>
         <div style="font-size:12px;color:var(--text2)">${a.description}</div>
         <div style="font-size:11px;color:var(--text2);margin-top:6px">💬 ${a.messages_processed} messages • 📝 ${a.conversation_length} in context</div>
@@ -2159,13 +2177,42 @@ async function chatWithAgent(name) {
   } catch(e) { respEl.innerHTML = `<span style="color:var(--red)">❌ ${e.message}</span>`; }
 }
 
-function editAgent(name, role, desc) {
+async function editAgent(name, role, desc, provider, model) {
   document.getElementById('edit-agent-name-hidden').value = name;
   document.getElementById('edit-agent-title').textContent = name;
   document.getElementById('edit-agent-role').value = role;
   document.getElementById('edit-agent-desc').value = desc.replace(/&quot;/g, '"');
   document.getElementById('edit-agent-tg-token').value = '';
   document.getElementById('agent-edit-modal').style.display = 'flex';
+  // Populate provider dropdown (only active/configured)
+  const sel = document.getElementById('edit-agent-provider');
+  sel.innerHTML = '<option value="">— Giữ nguyên —</option>';
+  try {
+    if (!_providersCache) {
+      const res = await authFetch(API + '/api/v1/providers');
+      const data = await res.json();
+      if (data.providers) _providersCache = data.providers;
+    }
+    if (_providersCache) {
+      const activeProv = _providersCache.filter(p => p.status === 'active' || p.type === 'local');
+      activeProv.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.name;
+        const typeIcon = p.type === 'local' ? '🖥️' : '☁️';
+        const badge = p.status === 'active' ? ' ⚡' : '';
+        opt.textContent = `${typeIcon} ${p.name}${badge}`;
+        if (p.name === provider) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    }
+  } catch(e) {}
+  // Populate model dropdown
+  const modelSel = document.getElementById('edit-agent-model');
+  modelSel.innerHTML = '<option value="">— Giữ nguyên —</option>';
+  if (provider) {
+    await loadAgentModels(provider, 'edit-agent-model');
+    if (model) modelSel.value = model;
+  }
   // Load telegram status
   loadTelegramStatus(name);
 }
@@ -2233,10 +2280,15 @@ async function saveAgentEdit() {
   const name = document.getElementById('edit-agent-name-hidden').value;
   const role = document.getElementById('edit-agent-role').value;
   const desc = document.getElementById('edit-agent-desc').value.trim();
+  const provider = document.getElementById('edit-agent-provider').value;
+  const model = document.getElementById('edit-agent-model').value;
+  const body = { role, description: desc };
+  if (provider) body.provider = provider;
+  if (model) body.model = model;
   try {
     const res = await authFetch(API + '/api/v1/agents/' + encodeURIComponent(name), {
       method: 'PUT', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ role, description: desc })
+      body: JSON.stringify(body)
     });
     const r = await res.json();
     if (r.ok) {
