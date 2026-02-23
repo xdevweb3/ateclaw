@@ -153,6 +153,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <a href="/tools" onclick="navigateTo(event,'tools')" id="nav-tools">🛠️ <span data-i18n="nav.tools">Công cụ</span></a>
       <a href="/mcp" onclick="navigateTo(event,'mcp')" id="nav-mcp">🔗 <span data-i18n="nav.mcp">Máy chủ MCP</span></a>
       <a href="/agents" onclick="navigateTo(event,'agents')" id="nav-agents">🤖 <span data-i18n="nav.agents">Đa tác tử</span></a>
+      <a href="/groups" onclick="navigateTo(event,'groups')" id="nav-groups">👥 <span data-i18n="nav.groups">Nhóm Agent</span></a>
       <a href="/knowledge" onclick="navigateTo(event,'knowledge')" id="nav-knowledge">📚 <span data-i18n="nav.knowledge">Kho tri thức</span></a>
       <div class="nav-sep"></div>
       <a href="/brain" onclick="navigateTo(event,'brain')" id="nav-brain">🧠 <span data-i18n="nav.brain">Brain Engine</span></a>
@@ -547,6 +548,50 @@ tr:hover td{background:rgba(255,255,255,.02)}
       </div>
     </div>
 
+    <!-- ═══ AGENT GROUP CHAT ═══ -->
+    <div id="page-groups" style="display:none">
+      <div class="page-header"><div><h1>👥 <span data-i18n="groups.title">Nhóm Agent</span></h1><div class="sub" data-i18n="groups.subtitle">Tạo nhóm các Agent AI cùng trao đổi và phối hợp — như OpenClaw</div></div>
+        <button class="btn btn-primary" onclick="showCreateGroupForm()">+ <span data-i18n="groups.create">Tạo nhóm</span></button>
+      </div>
+      <div class="stats">
+        <div class="card"><div class="card-label" data-i18n="groups.total">Tổng nhóm</div><div class="card-value accent" id="groups-total">0</div></div>
+        <div class="card"><div class="card-label" data-i18n="groups.agents_count">Agent trong nhóm</div><div class="card-value blue" id="groups-agents">0</div></div>
+        <div class="card"><div class="card-label" data-i18n="groups.conversations">Cuộc hội thoại</div><div class="card-value green" id="groups-convos">0</div></div>
+      </div>
+      <!-- Create Group Form -->
+      <div id="group-create-form" class="card" style="display:none;margin-top:16px">
+        <h3>➕ <span data-i18n="groups.create_new">Tạo nhóm mới</span></h3>
+        <div class="form-row"><span class="form-label" data-i18n="form.name">Tên</span><input id="new-group-name" placeholder="vd: Dev Team, Marketing Team"></div>
+        <div class="form-row"><span class="form-label" data-i18n="groups.topic">Chủ đề</span><input id="new-group-topic" placeholder="vd: Phân tích và phát triển mã nguồn"></div>
+        <div style="margin:12px 0">
+          <div class="form-label" style="margin-bottom:8px" data-i18n="groups.select_agents">Chọn Agent tham gia:</div>
+          <div id="group-agent-checkboxes" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+          <div style="font-size:11px;color:var(--text2);margin-top:6px" data-i18n="groups.agent_hint">Chưa có agent? Vào trang Đa tác tử để tạo trước.</div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="btn btn-primary" onclick="createGroup()">👥 <span data-i18n="groups.create">Tạo nhóm</span></button>
+          <button class="btn btn-outline" onclick="document.getElementById('group-create-form').style.display='none'" data-i18n="form.cancel">Hủy</button>
+        </div>
+      </div>
+      <!-- Groups List -->
+      <div id="groups-list" class="ch-grid" style="margin-top:16px"></div>
+      <!-- Group Conversation Modal -->
+      <div id="group-chat-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;align-items:center;justify-content:center;backdrop-filter:blur(4px)">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;max-width:700px;width:95%;max-height:85vh;display:flex;flex-direction:column">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <h2 id="group-chat-title" style="font-size:16px">👥 Group Chat</h2>
+            <button class="btn btn-outline btn-sm" onclick="closeGroupChat()">✕ Đóng</button>
+          </div>
+          <div style="font-size:11px;color:var(--text2);margin-bottom:8px" id="group-chat-members"></div>
+          <div id="group-chat-messages" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;min-height:300px;max-height:55vh;padding:8px 0"></div>
+          <div style="display:flex;gap:8px;padding-top:10px;border-top:1px solid var(--border)">
+            <input id="group-chat-input" placeholder="Nhập tin nhắn gửi đến nhóm..." style="flex:1;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;color:var(--text);font-size:13px;outline:none" onkeydown="if(event.key==='Enter')sendGroupMessage()">
+            <button class="btn btn-primary" onclick="sendGroupMessage()">Gửi ↑</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ═══ KNOWLEDGE BASE ═══ -->
     <div id="page-knowledge" style="display:none">
       <div class="page-header"><div><h1>📚 <span data-i18n="kb.title">Kho tri thức</span></h1><div class="sub" data-i18n="kb.subtitle">RAG cá nhân — thêm tài liệu để AI trả lời chính xác hơn</div></div>
@@ -666,6 +711,7 @@ function showPage(name, pushState) {
   if (name === 'agents') loadAgents();
   if (name === 'knowledge') loadKnowledgeDocs();
   if (name === 'brain') loadBrainFiles();
+  if (name === 'groups') renderGroups();
 }
 
 // Handle browser back/forward
@@ -678,7 +724,7 @@ window.addEventListener('popstate', (ev) => {
 function getPageFromPath() {
   const path = location.pathname.replace(/^\//, '').replace(/\/$/, '');
   // Map valid page names
-  const validPages = ['dashboard','chat','settings','providers','channels','tools','brain','configfile','mcp','agents','knowledge'];
+  const validPages = ['dashboard','chat','settings','providers','channels','tools','brain','configfile','mcp','agents','knowledge','groups'];
   if (!path || path === '' || !validPages.includes(path)) return 'dashboard';
   return path;
 }
@@ -765,83 +811,134 @@ const PROVIDERS_META = [
     {key:'model_path',label:'Model Path (.gguf)',type:'text',placeholder:'~/.bizclaw/models/tinyllama.gguf'},
     {key:'threads',label:'Threads',type:'number',placeholder:'4'},
   ]},
+  {name:'cliproxy',label:'CLIProxyAPI',icon:'🔌',type:'proxy',models:['OpenAI-compatible proxy'],fields:[
+    {key:'base_url',label:'Proxy URL (bắt buộc)',type:'text',placeholder:'http://localhost:8787/v1'},
+    {key:'api_key',label:'API Key (nếu proxy yêu cầu)',type:'password',placeholder:'proxy-key-...'},
+    {key:'model',label:'Model',type:'text',placeholder:'gpt-4o-mini'},
+  ]},
 ];
+// ═══ CLIProxy Persistence ═══
+// CLIProxyAPI proxies through openai provider. We persist 'cliproxy' state in localStorage
+// because Rust config only knows openai+base_url. This distinguishes CLIProxy from OpenAI+custom URL.
+function isClipProxyActive(c) {
+  if (!c) return false;
+  const flag = localStorage.getItem('bizclaw_cliproxy');
+  if (flag !== 'true') return false;
+  const provider = c.default_provider || 'openai';
+  const url = c.api_base_url || '';
+  return provider === 'openai' && url && !url.includes('api.openai.com');
+}
+function setClipProxyFlag(active) {
+  if (active) localStorage.setItem('bizclaw_cliproxy', 'true');
+  else localStorage.removeItem('bizclaw_cliproxy');
+}
 
 function renderProviderCards() {
   const c = configData;
   const activeProvider = c.default_provider || 'openai';
   const activeModel = c.default_model || '';
-  document.getElementById('prov-active-name').textContent = activeProvider;
-  document.getElementById('prov-active-model').textContent = activeModel || '—';
+  const proxyUrl = c.api_base_url || '';
+  const isClipActive = isClipProxyActive(c);
+  document.getElementById('prov-active-name').textContent = isClipActive ? 'CLIProxyAPI' : activeProvider;
+  document.getElementById('prov-active-model').textContent = activeModel || '\u2014';
   document.getElementById('prov-total').textContent = PROVIDERS_META.length;
   const cloudLabel = t('providers.type_cloud');
   const localLabel = t('providers.type_local');
+  const proxyLabel = t('providers.type_proxy') || 'Proxy';
   const activeLabel = t('providers.badge_active');
   const activateBtn = t('providers.btn_activate');
   const activeBtn = t('providers.btn_active');
   document.getElementById('providers-grid').innerHTML = PROVIDERS_META.map(p => {
-    const isActive = p.name === activeProvider;
+    const isActive = p.name === 'cliproxy' ? isClipActive : (p.name === activeProvider && !isClipActive);
     const savedKey = c.api_key_set && isActive;
-    const typeLabel = p.type === 'cloud' ? cloudLabel : localLabel;
-    return `<div class="ch-card" style="${isActive?'border-color:var(--accent);box-shadow:0 0 24px rgba(99,102,241,.15)':''}"> 
+    const typeLabel = p.type === 'cloud' ? cloudLabel : (p.type === 'proxy' ? proxyLabel : localLabel);
+    const fieldVals = {};
+    if (isActive) {
+      p.fields.forEach(f => {
+        if (f.key === 'api_key') fieldVals[f.key] = savedKey ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : '';
+        else if (f.key === 'model') fieldVals[f.key] = activeModel;
+        else if (f.key === 'base_url') fieldVals[f.key] = proxyUrl;
+        else if (f.key === 'model_path') fieldVals[f.key] = (c.brain||{}).model_path || '';
+        else if (f.key === 'threads') fieldVals[f.key] = (c.brain||{}).threads || 4;
+      });
+    }
+    return `<div class="ch-card" style="${isActive?'border-color:var(--accent);box-shadow:0 0 24px rgba(99,102,241,.15)':''}">
       <div class="ch-header">
         <span class="ch-name">${p.icon} ${p.label}</span>
         <div style="display:flex;align-items:center;gap:8px">
-          <span class="badge badge-${isActive?'green':'blue'}">${isActive?'● '+activeLabel:typeLabel}</span>
+          <span class="badge badge-${isActive?'green':p.type==='proxy'?'purple':'blue'}">${isActive?'\u25cf '+activeLabel:typeLabel}</span>
         </div>
       </div>
       <div style="font-size:11px;color:var(--text2);margin-bottom:10px">${p.models.join(', ')}</div>
       <div class="ch-fields">
         ${p.fields.map(f => {
-          let val = '';
-          if (isActive) {
-            if (f.key === 'api_key') val = savedKey ? '••••••••' : '';
-            else if (f.key === 'model') val = activeModel;
-            else if (f.key === 'base_url') val = c.api_base_url || '';
-            else if (f.key === 'model_path') val = (c.brain||{}).model_path || '';
-            else if (f.key === 'threads') val = (c.brain||{}).threads || 4;
-          }
+          const val = fieldVals[f.key] || '';
           return `<label>${f.label}</label><input type="${f.type||'text'}" id="prov-${p.name}-${f.key}" value="${val}" placeholder="${f.placeholder}">`;
         }).join('')}
       </div>
+      ${p.name === 'cliproxy' ? '<div style="font-size:11px;color:var(--cyan);margin-bottom:8px;padding:6px 8px;background:rgba(34,211,238,.06);border-radius:6px">\ud83d\udca1 Proxy OpenAI-compatible APIs: LiteLLM, LocalAI, vLLM, text-gen-webui, Claw, etc.</div>' : ''}
       <div class="ch-actions">
         <button class="btn ${isActive?'btn-green':'btn-primary'} btn-sm" onclick="setActiveProvider('${p.name}')">${isActive?activeBtn:activateBtn}</button>
+        ${isActive && p.name === 'cliproxy' ? '<button class="btn btn-outline btn-sm" onclick="testClipProxy()">\ud83e\uddea Test</button>' : ''}
       </div>
     </div>`;
   }).join('');
 }
 
+async function testClipProxy() {
+  const url = configData.api_base_url;
+  if (!url) { toast('\u274c Ch\u01b0a c\u1ea5u h\u00ecnh Proxy URL'); return; }
+  toast('\ud83d\udd04 \u0110ang ki\u1ec3m tra k\u1ebft n\u1ed1i...');
+  try {
+    const testUrl = url.replace(/\/v1\/?$/, '') + '/v1/models';
+    const res = await fetch(testUrl, { signal: AbortSignal.timeout(8000) });
+    if (res.ok) {
+      const data = await res.json();
+      const models = (data.data || []).map(m => m.id).slice(0, 5).join(', ');
+      toast('\u2705 Proxy ho\u1ea1t \u0111\u1ed9ng! Models: ' + (models || '(none listed)'));
+    } else {
+      toast('\u26a0\ufe0f Proxy tr\u1ea3 v\u1ec1 HTTP ' + res.status);
+    }
+  } catch(e) {
+    toast('\u274c Kh\u00f4ng k\u1ebft n\u1ed1i \u0111\u01b0\u1ee3c: ' + e.message);
+  }
+}
+
 async function setActiveProvider(name) {
   const meta = PROVIDERS_META.find(p => p.name === name);
   if (!meta) return;
-  const body = { default_provider: name };
-  // Collect field values
+  const actualProvider = name === 'cliproxy' ? 'openai' : name;
+  const body = { default_provider: actualProvider };
   meta.fields.forEach(f => {
     const el = document.getElementById('prov-' + name + '-' + f.key);
     if (!el) return;
     const val = el.value.trim();
-    if (!val || val.startsWith('••')) return;
+    if (!val || val.startsWith('\u2022')) return;
     if (f.key === 'api_key') body.api_key = val;
     else if (f.key === 'model') body.default_model = val;
     else if (f.key === 'base_url') body.api_base_url = val;
     else if (f.key === 'model_path') { body.brain = body.brain || {}; body.brain.model_path = val; body.brain.enabled = true; body.default_model = 'brain-local'; }
     else if (f.key === 'threads') { body.brain = body.brain || {}; body.brain.threads = parseInt(val) || 4; }
   });
-  // If model not set, use first default
+  if (name === 'cliproxy' && !body.api_base_url) {
+    toast('\u274c CLIProxyAPI c\u1ea7n Proxy URL!'); return;
+  }
   if (!body.default_model) {
     if (name === 'brain') body.default_model = 'brain-local';
     else body.default_model = meta.models[0] || '';
   }
+  // Persist CLIProxy flag to localStorage (survives page reload)
+  setClipProxyFlag(name === 'cliproxy');
   try {
     const res = await authFetch(API + '/api/v1/config/update', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const r = await res.json();
     if (r.ok) {
-      toast('✅ Provider ' + name + ' activated!');
+      toast('\u2705 Provider ' + (name === 'cliproxy' ? 'CLIProxyAPI' : name) + ' activated!');
       await loadConfig();
       renderProviderCards();
       loadDashboard();
-    } else { toast('❌ ' + r.error); }
-  } catch(e) { toast('❌ ' + e.message); }
+    } else { toast('\u274c ' + r.error); }
+  } catch(e) { toast('\u274c ' + e.message); }
 }
 
 async function loadProviders() {
@@ -1572,7 +1669,186 @@ async function broadcastMessage() {
         </div>
       `).join('');
     }
-  } catch(e) { el.innerHTML = `<span style="color:var(--red)">❌ ${e.message}</span>`; }
+  } catch(e) { el.innerHTML = `<span style="color:var(--red)">\u274c ${e.message}</span>`; }
+}
+
+// \u2550\u2550\u2550 AGENT GROUP CHAT \u2550\u2550\u2550
+let _groups = JSON.parse(localStorage.getItem('bizclaw_groups') || '[]');
+let _activeGroupIdx = -1;
+
+function saveGroups() {
+  localStorage.setItem('bizclaw_groups', JSON.stringify(_groups));
+}
+
+async function showCreateGroupForm() {
+  document.getElementById('group-create-form').style.display = '';
+  try {
+    const res = await authFetch(API + '/api/v1/agents');
+    const data = await res.json();
+    const container = document.getElementById('group-agent-checkboxes');
+    if (!data.ok || !data.agents || data.agents.length === 0) {
+      container.innerHTML = '<span style="color:var(--orange);font-size:12px">\u26a0\ufe0f Ch\u01b0a c\u00f3 agent n\u00e0o. V\u00e0o trang \u0110a t\u00e1c t\u1eed \u0111\u1ec3 t\u1ea1o.</span>';
+      return;
+    }
+    container.innerHTML = data.agents.map(a => {
+      const icon = a.role === 'coder' ? '\ud83d\udcbb' : a.role === 'researcher' ? '\ud83d\udd2c' : a.role === 'writer' ? '\u270d\ufe0f' : a.role === 'analyst' ? '\ud83d\udcca' : '\ud83e\udd16';
+      return `<label style="display:flex;align-items:center;gap:6px;padding:6px 12px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:12px">
+        <input type="checkbox" value="${a.name}" class="group-agent-cb"> ${icon} ${a.name} <span style="color:var(--text2);font-size:10px">(${a.role})</span>
+      </label>`;
+    }).join('');
+  } catch(e) {
+    document.getElementById('group-agent-checkboxes').innerHTML = '<span style="color:var(--red)">\u274c ' + e.message + '</span>';
+  }
+}
+
+function createGroup() {
+  const name = document.getElementById('new-group-name').value.trim();
+  const topic = document.getElementById('new-group-topic').value.trim();
+  if (!name) { toast('Nh\u1eadp t\u00ean nh\u00f3m'); return; }
+  const agents = [...document.querySelectorAll('.group-agent-cb:checked')].map(cb => cb.value);
+  if (agents.length < 2) { toast('Ch\u1ecdn \u00edt nh\u1ea5t 2 agent cho nh\u00f3m'); return; }
+  _groups.push({
+    name,
+    topic: topic || 'General discussion',
+    agents,
+    messages: [],
+    created: new Date().toISOString(),
+  });
+  saveGroups();
+  toast('\ud83d\udc65 Nh\u00f3m "' + name + '" \u0111\u00e3 t\u1ea1o v\u1edbi ' + agents.length + ' agents!');
+  document.getElementById('group-create-form').style.display = 'none';
+  ['new-group-name', 'new-group-topic'].forEach(id => document.getElementById(id).value = '');
+  renderGroups();
+}
+
+function renderGroups() {
+  document.getElementById('groups-total').textContent = _groups.length;
+  document.getElementById('groups-agents').textContent = _groups.reduce((s, g) => s + g.agents.length, 0);
+  document.getElementById('groups-convos').textContent = _groups.reduce((s, g) => s + g.messages.length, 0);
+  const list = document.getElementById('groups-list');
+  if (_groups.length === 0) {
+    list.innerHTML = '<div class="card" style="text-align:center;padding:40px;color:var(--text2)"><div style="font-size:48px;margin-bottom:12px">\ud83d\udc65</div><div>Ch\u01b0a c\u00f3 nh\u00f3m n\u00e0o. T\u1ea1o nh\u00f3m Agent \u0111\u1ec3 ch\u00fang c\u00f9ng trao \u0111\u1ed5i, ph\u00e2n t\u00edch v\u00e0 ph\u1ed1i h\u1ee3p.</div></div>';
+    return;
+  }
+  list.innerHTML = _groups.map((g, i) => {
+    const agentIcons = g.agents.map(a => '<span style="background:var(--bg2);padding:2px 8px;border-radius:4px;font-size:11px">\ud83e\udd16 ' + a + '</span>').join(' ');
+    return `<div class="ch-card">
+      <div class="ch-header">
+        <span class="ch-name">\ud83d\udc65 ${g.name}</span>
+        <span class="badge badge-blue">${g.agents.length} agents</span>
+      </div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:8px">\ud83d\udccb ${g.topic}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px">${agentIcons}</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px">\ud83d\udcac ${g.messages.length} tin nh\u1eafn \u2022 ${new Date(g.created).toLocaleDateString()}</div>
+      <div class="ch-actions">
+        <button class="btn btn-primary btn-sm" onclick="openGroupChat(${i})">\ud83d\udcac M\u1edf nh\u00f3m</button>
+        <button class="btn btn-outline btn-sm" style="color:var(--red)" onclick="deleteGroup(${i})">\ud83d\uddd1\ufe0f</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function deleteGroup(idx) {
+  if (!confirm('X\u00f3a nh\u00f3m "' + _groups[idx].name + '"?')) return;
+  _groups.splice(idx, 1);
+  saveGroups();
+  renderGroups();
+  toast('\ud83d\uddd1\ufe0f \u0110\u00e3 x\u00f3a nh\u00f3m');
+}
+
+function openGroupChat(idx) {
+  _activeGroupIdx = idx;
+  const g = _groups[idx];
+  document.getElementById('group-chat-title').textContent = '\ud83d\udc65 ' + g.name;
+  document.getElementById('group-chat-members').textContent = '\ud83d\udc64 Th\u00e0nh vi\u00ean: ' + g.agents.join(', ') + ' \u2022 \ud83d\udccb ' + g.topic;
+  document.getElementById('group-chat-modal').style.display = 'flex';
+  renderGroupMessages();
+  document.getElementById('group-chat-input').focus();
+}
+
+function closeGroupChat() {
+  document.getElementById('group-chat-modal').style.display = 'none';
+  _activeGroupIdx = -1;
+}
+
+function renderGroupMessages() {
+  if (_activeGroupIdx < 0) return;
+  const g = _groups[_activeGroupIdx];
+  const el = document.getElementById('group-chat-messages');
+  if (g.messages.length === 0) {
+    el.innerHTML = '<div class="msg msg-system">Nh\u00f3m \u0111\u00e3 s\u1eb5n s\u00e0ng. G\u1eedi tin nh\u1eafn v\u00e0 c\u00e1c agent s\u1ebd c\u00f9ng th\u1ea3o lu\u1eadn!</div>';
+    return;
+  }
+  el.innerHTML = g.messages.map(m => {
+    if (m.role === 'user') return `<div class="msg msg-user">${escHtml(m.content)}</div>`;
+    if (m.role === 'system') return `<div class="msg msg-system">${escHtml(m.content)}</div>`;
+    const icon = m.agent_role === 'coder' ? '\ud83d\udcbb' : m.agent_role === 'researcher' ? '\ud83d\udd2c' : m.agent_role === 'writer' ? '\u270d\ufe0f' : '\ud83e\udd16';
+    return `<div class="msg msg-bot" style="border-left:3px solid var(--accent)">
+      <div style="font-size:10px;color:var(--accent2);font-weight:600;margin-bottom:4px">${icon} ${m.agent}</div>
+      <div>${escHtml(m.content)}</div>
+    </div>`;
+  }).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+function escHtml(s) { return (s||'').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>'); }
+
+async function sendGroupMessage() {
+  if (_activeGroupIdx < 0) return;
+  const input = document.getElementById('group-chat-input');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  
+  const g = _groups[_activeGroupIdx];
+  g.messages.push({ role: 'user', content: text, time: new Date().toISOString() });
+  saveGroups();
+  renderGroupMessages();
+  
+  // Send to each agent sequentially
+  for (const agentName of g.agents) {
+    // Build context with previous agent responses from this round
+    const roundResponses = g.messages.filter(m => m.role === 'agent' && m.round === g.messages.length);
+    const agentContext = `[Group "${g.name}" - Topic: ${g.topic}]
+You are agent "${agentName}" in a group discussion. Here is the latest message:
+
+User: ${text}
+
+${roundResponses.map(m => m.agent + ': ' + m.content).join('\n')}
+
+Contribute your perspective briefly (2-3 sentences) based on your expertise.`;
+
+    // Show typing
+    g.messages.push({ role: 'system', content: `\ud83e\udd16 ${agentName} \u0111ang suy ngh\u0129...`, _temp: true });
+    saveGroups();
+    renderGroupMessages();
+    
+    try {
+      const res = await authFetch(API + `/api/v1/agents/${agentName}/chat`, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ message: agentContext })
+      });
+      const r = await res.json();
+      // Remove typing indicator
+      const tempIdx = g.messages.findIndex(m => m._temp && m.content.includes(agentName));
+      if (tempIdx >= 0) g.messages.splice(tempIdx, 1);
+      if (r.ok) {
+        g.messages.push({ role: 'agent', agent: agentName, agent_role: r.role || 'assistant', content: r.response, time: new Date().toISOString(), round: g.messages.length });
+      } else {
+        g.messages.push({ role: 'agent', agent: agentName, agent_role: 'assistant', content: '\u274c ' + (r.error || 'Error'), time: new Date().toISOString() });
+      }
+    } catch(e) {
+      const tempIdx2 = g.messages.findIndex(m => m._temp && m.content.includes(agentName));
+      if (tempIdx2 >= 0) g.messages.splice(tempIdx2, 1);
+      g.messages.push({ role: 'agent', agent: agentName, agent_role: 'assistant', content: '\u274c ' + e.message, time: new Date().toISOString() });
+    }
+    saveGroups();
+    renderGroupMessages();
+  }
+  
+  g.messages.push({ role: 'system', content: '\u2014\u2014 T\u1ea5t c\u1ea3 agent \u0111\u00e3 tr\u1ea3 l\u1eddi \u2014\u2014' });
+  saveGroups();
+  renderGroupMessages();
 }
 
 // ═══ KNOWLEDGE BASE ═══
@@ -1814,7 +2090,7 @@ const I18N = {
   vi: {
     // Navigation
     'nav.dashboard':'Bảng điều khiển','nav.webchat':'Trò chuyện','nav.settings':'Cài đặt',
-    'nav.providers':'Nhà cung cấp','nav.channels':'Kênh liên lạc','nav.tools':'Công cụ',
+    'nav.providers':'Nhà cung cấp','nav.channels':'Kênh liên lạc','nav.tools':'Công cụ','nav.groups':'Nhóm Agent',
     'nav.brain':'Brain Engine','nav.mcp':'Máy chủ MCP','nav.agents':'Đa tác tử',
     'nav.knowledge':'Kho tri thức','nav.config':'Tệp cấu hình',
     // Dashboard
@@ -1847,7 +2123,7 @@ const I18N = {
     // Providers
     'providers.title':'Nhà cung cấp','providers.subtitle':'Cấu hình nhà cung cấp AI — chọn provider mặc định, API key, model',
     'providers.active_label':'Provider đang dùng','providers.total_label':'Tổng providers',
-    'providers.type_cloud':'Cloud','providers.type_local':'Nội bộ',
+    'providers.type_cloud':'Cloud','providers.type_local':'Nội bộ','providers.type_proxy':'Proxy',
     'providers.badge_active':'Đang dùng','providers.btn_activate':'⚡ Kích hoạt','providers.btn_active':'✅ Đang sử dụng',
     // Channels
     'channels.title':'Cấu hình kênh liên lạc','channels.subtitle':'Kết nối agent với các nền tảng nhắn tin',
@@ -1879,6 +2155,12 @@ const I18N = {
     'agents.create':'Tạo Agent','agents.total':'Tổng Agent','agents.default':'Agent mặc định',
     'agents.messages':'Tin nhắn','agents.create_new':'Tạo Agent mới','agents.broadcast':'Phát tin nhắn',
     'agents.msg':'Tin nhắn','agents.send_all':'Gửi tất cả',
+    // Agent Groups
+    'groups.title':'Nhóm Agent','groups.subtitle':'Tạo nhóm các Agent AI cùng trao đổi và phối hợp — như OpenClaw',
+    'groups.create':'Tạo nhóm','groups.total':'Tổng nhóm','groups.agents_count':'Agent trong nhóm',
+    'groups.conversations':'Cuộc hội thoại','groups.create_new':'Tạo nhóm mới',
+    'groups.topic':'Chủ đề','groups.select_agents':'Chọn Agent tham gia:',
+    'groups.agent_hint':'Chưa có agent? Vào trang Đa tác tử để tạo trước.',
     // Knowledge Base
     'kb.title':'Kho tri thức','kb.subtitle':'RAG cá nhân — thêm tài liệu để AI trả lời chính xác hơn',
     'kb.add_doc':'Thêm tài liệu','kb.documents':'Tài liệu','kb.chunks':'Đoạn văn',
@@ -1913,7 +2195,7 @@ const I18N = {
   en: {
     // Navigation
     'nav.dashboard':'Dashboard','nav.webchat':'WebChat','nav.settings':'Settings',
-    'nav.providers':'Providers','nav.channels':'Channels','nav.tools':'Tools',
+    'nav.providers':'Providers','nav.channels':'Channels','nav.tools':'Tools','nav.groups':'Agent Groups',
     'nav.brain':'Brain Engine','nav.mcp':'MCP Servers','nav.agents':'Multi-Agent',
     'nav.knowledge':'Knowledge','nav.config':'Config File',
     // Dashboard
@@ -1946,7 +2228,7 @@ const I18N = {
     // Providers
     'providers.title':'Providers','providers.subtitle':'Configure AI providers — set default provider, API key, model',
     'providers.active_label':'Active Provider','providers.total_label':'Total Providers',
-    'providers.type_cloud':'Cloud','providers.type_local':'Local',
+    'providers.type_cloud':'Cloud','providers.type_local':'Local','providers.type_proxy':'Proxy',
     'providers.badge_active':'Active','providers.btn_activate':'⚡ Activate','providers.btn_active':'✅ In Use',
     // Channels
     'channels.title':'Channel Configuration','channels.subtitle':'Connect your agent to messaging platforms',
@@ -1978,6 +2260,12 @@ const I18N = {
     'agents.create':'Create Agent','agents.total':'Total Agents','agents.default':'Default Agent',
     'agents.messages':'Messages','agents.create_new':'Create New Agent','agents.broadcast':'Broadcast Message',
     'agents.msg':'Message','agents.send_all':'Send to All',
+    // Agent Groups
+    'groups.title':'Agent Groups','groups.subtitle':'Create groups of AI Agents to discuss and collaborate — like OpenClaw',
+    'groups.create':'Create Group','groups.total':'Total Groups','groups.agents_count':'Agents in Groups',
+    'groups.conversations':'Conversations','groups.create_new':'Create New Group',
+    'groups.topic':'Topic','groups.select_agents':'Select Agents:',
+    'groups.agent_hint':'No agents yet? Go to Multi-Agent page to create some first.',
     // Knowledge Base
     'kb.title':'Knowledge Base','kb.subtitle':'Personal RAG — add documents for context-aware AI responses',
     'kb.add_doc':'Add Document','kb.documents':'Documents','kb.chunks':'Chunks',
