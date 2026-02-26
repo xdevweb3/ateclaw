@@ -22,7 +22,7 @@ impl ZaloBusiness {
     pub async fn get_catalog(&self, access_token: &str) -> Result<Vec<ZaloCatalog>> {
         let response = self
             .client
-            .get(&format!("{}/store/getslice", self.base_url))
+            .get(format!("{}/store/getslice", self.base_url))
             .bearer_auth(access_token)
             .send()
             .await
@@ -76,7 +76,7 @@ impl ZaloBusiness {
 
         let response = self
             .client
-            .post(&format!("{}/message/cs", self.base_url))
+            .post(format!("{}/message/cs", self.base_url))
             .bearer_auth(access_token)
             .json(&body)
             .send()

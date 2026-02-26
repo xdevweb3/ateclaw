@@ -545,14 +545,13 @@ impl Orchestrator {
                             use tokio::io::AsyncWriteExt;
                             let _ = stdin.write_all(current_output.as_bytes()).await;
                         }
-                        if let Ok(output) = child.wait_with_output().await {
-                            if !output.status.success() && gate.block_on_failure {
+                        if let Ok(output) = child.wait_with_output().await
+                            && !output.status.success() && gate.block_on_failure {
                                 return Err(BizClawError::QualityGate(format!(
                                     "Command gate '{}' failed",
                                     gate.target
                                 )));
                             }
-                        }
                     }
                 }
                 QualityGateType::Agent => {
@@ -649,14 +648,13 @@ impl Orchestrator {
         // Check blocked_by — all must be completed
         if !task.blocked_by.is_empty() {
             for dep_id in &task.blocked_by {
-                if let Some(dep) = store.get_task(dep_id).await? {
-                    if dep.status != TaskStatus::Completed {
+                if let Some(dep) = store.get_task(dep_id).await?
+                    && dep.status != TaskStatus::Completed {
                         return Err(BizClawError::Team(format!(
                             "Task blocked by '{}' (status: {:?})",
                             dep_id, dep.status
                         )));
                     }
-                }
             }
         }
 

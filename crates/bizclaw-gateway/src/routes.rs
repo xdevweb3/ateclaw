@@ -53,9 +53,10 @@ fn mask_secret(s: &str) -> String {
 /// gets the credentials specific to its chosen provider, not the global default.
 ///
 /// IMPORTANT: Must sync BOTH config systems:
-///   - Legacy: config.api_key, config.api_base_url, config.default_provider
-///   - LLM section: config.llm.provider, config.llm.api_key, config.llm.endpoint
-/// create_provider() reads from llm.* FIRST, so we must set both.
+/// - Legacy: config.api_key, config.api_base_url, config.default_provider
+/// - LLM section: config.llm.provider, config.llm.api_key, config.llm.endpoint
+///
+/// `create_provider()` reads from `llm.*` FIRST, so we must set both.
 fn apply_provider_config_from_db(
     db: &GatewayDb,
     config: &mut bizclaw_core::config::BizClawConfig,
@@ -322,13 +323,12 @@ pub async fn update_config(
     }
 
     // Update MCP servers
-    if let Some(mcp) = req.get("mcp_servers") {
-        if let Ok(servers) =
+    if let Some(mcp) = req.get("mcp_servers")
+        && let Ok(servers) =
             serde_json::from_value::<Vec<bizclaw_core::config::McpServerEntry>>(mcp.clone())
         {
             cfg.mcp_servers = servers;
         }
-    }
 
     // Save to disk
     let content = toml::to_string_pretty(&*cfg).unwrap_or_default();
@@ -660,11 +660,10 @@ pub async fn list_channel_instances(
         if let Some(cfg) = masked_inst.get_mut("config").and_then(|c| c.as_object_mut()) {
             let sensitive_keys = ["bot_token", "access_token", "webhook_secret", "smtp_pass", "app_token"];
             for key in &sensitive_keys {
-                if let Some(val) = cfg.get(*key).and_then(|v| v.as_str()) {
-                    if !val.is_empty() {
+                if let Some(val) = cfg.get(*key).and_then(|v| v.as_str())
+                    && !val.is_empty() {
                         cfg.insert(key.to_string(), serde_json::json!(mask_secret(val)));
                     }
-                }
             }
         }
         masked_inst
@@ -1090,22 +1089,18 @@ pub async fn auto_connect_channels(state: Arc<AppState>) {
             let agent_channels_path = state.config_path.parent()
                 .unwrap_or(std::path::Path::new("."))
                 .join("agent-channels.json");
-            if agent_channels_path.exists() {
-                if let Ok(content) = std::fs::read_to_string(&agent_channels_path) {
-                    if let Ok(bindings) = serde_json::from_str::<serde_json::Value>(&content) {
-                        if let Some(obj) = bindings.as_object() {
+            if agent_channels_path.exists()
+                && let Ok(content) = std::fs::read_to_string(&agent_channels_path)
+                    && let Ok(bindings) = serde_json::from_str::<serde_json::Value>(&content)
+                        && let Some(obj) = bindings.as_object() {
                             for (agent, channels) in obj {
-                                if let Some(arr) = channels.as_array() {
-                                    if arr.iter().any(|c| c.as_str() == Some("telegram")) {
+                                if let Some(arr) = channels.as_array()
+                                    && arr.iter().any(|c| c.as_str() == Some("telegram")) {
                                         target_agent = agent.clone();
                                         break;
                                     }
-                                }
                             }
                         }
-                    }
-                }
-            }
             // Fallback: bind to first agent available
             if target_agent.is_empty() {
                 let orch = state.orchestrator.lock().await;
@@ -1352,12 +1347,11 @@ pub async fn fetch_provider_models(
             if let Ok(entries) = std::fs::read_dir(dir) {
                 for entry in entries.flatten() {
                     let path = entry.path();
-                    if let Some(ext) = path.extension() {
-                        if ext == "gguf" || ext == "bin" {
-                            if let Some(name) = path.file_name() {
-                                models.push(name.to_string_lossy().to_string());
-                            }
-                        }
+                    if let Some(ext) = path.extension()
+                        && (ext == "gguf" || ext == "bin")
+                        && let Some(name) = path.file_name()
+                    {
+                        models.push(name.to_string_lossy().to_string());
                     }
                 }
             }
@@ -1475,12 +1469,12 @@ pub async fn list_channels(State(state): State<Arc<AppState>>) -> Json<serde_jso
     Json(serde_json::json!({
         "channels": [
             {"name": "cli", "type": "interactive", "status": "active", "configured": true},
-            {"name": "telegram", "type": "messaging", "status": if cfg.channel.telegram.as_ref().map_or(false, |t| t.enabled) { "active" } else { "disabled" }, "configured": cfg.channel.telegram.is_some()},
-            {"name": "zalo", "type": "messaging", "status": if cfg.channel.zalo.as_ref().map_or(false, |z| z.enabled) { "active" } else { "disabled" }, "configured": cfg.channel.zalo.is_some()},
-            {"name": "discord", "type": "messaging", "status": if cfg.channel.discord.as_ref().map_or(false, |d| d.enabled) { "active" } else { "disabled" }, "configured": cfg.channel.discord.is_some()},
-            {"name": "email", "type": "messaging", "status": if cfg.channel.email.as_ref().map_or(false, |e| e.enabled) { "active" } else { "disabled" }, "configured": cfg.channel.email.is_some()},
-            {"name": "webhook", "type": "api", "status": if cfg.channel.webhook.as_ref().map_or(false, |wh| wh.enabled) { "active" } else { "disabled" }, "configured": cfg.channel.webhook.is_some()},
-            {"name": "whatsapp", "type": "messaging", "status": if cfg.channel.whatsapp.as_ref().map_or(false, |w| w.enabled) { "active" } else { "disabled" }, "configured": cfg.channel.whatsapp.is_some()},
+            {"name": "telegram", "type": "messaging", "status": if cfg.channel.telegram.as_ref().is_some_and(|t| t.enabled) { "active" } else { "disabled" }, "configured": cfg.channel.telegram.is_some()},
+            {"name": "zalo", "type": "messaging", "status": if cfg.channel.zalo.as_ref().is_some_and(|z| z.enabled) { "active" } else { "disabled" }, "configured": cfg.channel.zalo.is_some()},
+            {"name": "discord", "type": "messaging", "status": if cfg.channel.discord.as_ref().is_some_and(|d| d.enabled) { "active" } else { "disabled" }, "configured": cfg.channel.discord.is_some()},
+            {"name": "email", "type": "messaging", "status": if cfg.channel.email.as_ref().is_some_and(|e| e.enabled) { "active" } else { "disabled" }, "configured": cfg.channel.email.is_some()},
+            {"name": "webhook", "type": "api", "status": if cfg.channel.webhook.as_ref().is_some_and(|wh| wh.enabled) { "active" } else { "disabled" }, "configured": cfg.channel.webhook.is_some()},
+            {"name": "whatsapp", "type": "messaging", "status": if cfg.channel.whatsapp.as_ref().is_some_and(|w| w.enabled) { "active" } else { "disabled" }, "configured": cfg.channel.whatsapp.is_some()},
         ]
     }))
 }
@@ -1561,8 +1555,8 @@ pub async fn brain_scan_models(State(state): State<Arc<AppState>>) -> Json<serde
         if let Ok(entries) = std::fs::read_dir(dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if let Some(ext) = path.extension() {
-                    if ext == "gguf" || ext == "bin" {
+                if let Some(ext) = path.extension()
+                    && (ext == "gguf" || ext == "bin") {
                         let abs = path.canonicalize().unwrap_or(path.clone());
                         if seen_paths.contains(&abs) {
                             continue;
@@ -1587,7 +1581,6 @@ pub async fn brain_scan_models(State(state): State<Arc<AppState>>) -> Json<serde
                             "size_bytes": size_bytes,
                         }));
                     }
-                }
             }
         }
     }
@@ -2140,18 +2133,16 @@ pub async fn create_agent(
 
     // Use current config as base, optionally override provider/model
     let mut agent_config = state.full_config.lock().unwrap().clone();
-    if let Some(provider) = body["provider"].as_str() {
-        if !provider.is_empty() {
+    if let Some(provider) = body["provider"].as_str()
+        && !provider.is_empty() {
             agent_config.default_provider = provider.to_string();
             agent_config.llm.provider = provider.to_string(); // sync
         }
-    }
-    if let Some(model) = body["model"].as_str() {
-        if !model.is_empty() {
+    if let Some(model) = body["model"].as_str()
+        && !model.is_empty() {
             agent_config.default_model = model.to_string();
             agent_config.llm.model = model.to_string(); // sync
         }
-    }
     if let Some(persona) = body["persona"].as_str() {
         agent_config.identity.persona = persona.to_string();
     }
@@ -2245,21 +2236,17 @@ pub async fn update_agent(
         if let Some(agent) = orch.get_agent_mut(&name) {
             let cur_provider = agent.provider_name().to_string();
             let cur_model = agent.model_name().to_string();
-            if let Some(p) = provider {
-                if !p.is_empty() && p != cur_provider { needs_recreate = true; }
-            }
-            if let Some(m) = model {
-                if !m.is_empty() && m != cur_model { needs_recreate = true; }
-            }
+            if let Some(p) = provider
+                && !p.is_empty() && p != cur_provider { needs_recreate = true; }
+            if let Some(m) = model
+                && !m.is_empty() && m != cur_model { needs_recreate = true; }
             // Update system prompt directly on live agent (no re-creation needed)
-            if !needs_recreate {
-                if let Some(sp) = system_prompt {
-                    if !sp.is_empty() && sp != agent.system_prompt() {
+            if !needs_recreate
+                && let Some(sp) = system_prompt
+                    && !sp.is_empty() && sp != agent.system_prompt() {
                         agent.set_system_prompt(sp);
                         tracing::info!("📝 update_agent '{}' — system_prompt updated in-place", name);
                     }
-                }
-            }
         }
 
     } // lock released here
@@ -2277,18 +2264,16 @@ pub async fn update_agent(
             }
         } // lock released before potentially slow await
 
-        if let Some(p) = provider {
-            if !p.is_empty() {
+        if let Some(p) = provider
+            && !p.is_empty() {
                 agent_config.default_provider = p.to_string();
                 agent_config.llm.provider = p.to_string(); // sync
             }
-        }
-        if let Some(m) = model {
-            if !m.is_empty() {
+        if let Some(m) = model
+            && !m.is_empty() {
                 agent_config.default_model = m.to_string();
                 agent_config.llm.model = m.to_string(); // sync
             }
-        }
         if let Some(sp) = system_prompt {
             agent_config.identity.system_prompt = sp.to_string();
         }
@@ -2800,11 +2785,10 @@ Output ONLY valid JSON, no markdown fences."#
         ("identity", "IDENTITY.md"),
         ("user", "USER.md"),
     ] {
-        if let Some(content) = parsed[key].as_str() {
-            if ws.write_file(filename, content).is_ok() {
+        if let Some(content) = parsed[key].as_str()
+            && ws.write_file(filename, content).is_ok() {
                 saved.push(*filename);
             }
-        }
     }
 
     tracing::info!("🎨 Brain personalized: {} files saved", saved.len());

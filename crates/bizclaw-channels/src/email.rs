@@ -353,11 +353,10 @@ fn imap_fetch_sync(
         if uid > max_uid {
             max_uid = uid;
         }
-        if let Some(body) = msg.body() {
-            if let Some(parsed) = parse_email_bytes(body, uid) {
+        if let Some(body) = msg.body()
+            && let Some(parsed) = parse_email_bytes(body, uid) {
                 emails.push(parsed);
             }
-        }
     }
 
     if mark_as_read && !new_uids.is_empty() {

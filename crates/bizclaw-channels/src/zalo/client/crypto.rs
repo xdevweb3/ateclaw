@@ -12,7 +12,7 @@ pub fn encrypt_aes256(data: &[u8], key: &[u8; 32]) -> Vec<u8> {
     let block_size = 16;
     let padding_len = block_size - (data.len() % block_size);
     let mut padded = data.to_vec();
-    padded.extend(std::iter::repeat(padding_len as u8).take(padding_len));
+    padded.extend(std::iter::repeat_n(padding_len as u8, padding_len));
 
     // Encrypt each block
     let mut encrypted = Vec::with_capacity(padded.len());

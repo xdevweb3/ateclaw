@@ -49,9 +49,9 @@ impl TenantManager {
         let sync_path = tenant_dir.join("config_sync.json");
         if sync_path.exists() {
             tracing::info!("📥 Importing config_sync.json for tenant {}", tenant.slug);
-            if let Ok(content) = std::fs::read_to_string(&sync_path) {
-                if let Ok(sync_data) = serde_json::from_str::<serde_json::Value>(&content) {
-                    if let Some(obj) = sync_data.as_object() {
+            if let Ok(content) = std::fs::read_to_string(&sync_path)
+                && let Ok(sync_data) = serde_json::from_str::<serde_json::Value>(&content)
+                    && let Some(obj) = sync_data.as_object() {
                         for (key, value) in obj {
                             if key == "updated_at" { continue; }
                             let val_str = match value {
@@ -66,8 +66,6 @@ impl TenantManager {
                         }
                         tracing::info!("  ✅ Imported {} config keys into DB", obj.len() - 1);
                     }
-                }
-            }
             // Remove sync file after import
             std::fs::remove_file(&sync_path).ok();
         }
@@ -126,9 +124,7 @@ port = {}
                 for cfg in &brain_keys {
                     let field = cfg.key.strip_prefix("brain.").unwrap_or(&cfg.key);
                     // Detect booleans and numbers
-                    if cfg.value == "true" || cfg.value == "false" {
-                        config_content.push_str(&format!("{} = {}\n", field, cfg.value));
-                    } else if cfg.value.parse::<f64>().is_ok() {
+                    if cfg.value == "true" || cfg.value == "false" || cfg.value.parse::<f64>().is_ok() {
                         config_content.push_str(&format!("{} = {}\n", field, cfg.value));
                     } else {
                         config_content.push_str(&format!("{} = \"{}\"\n", field, cfg.value));
@@ -225,11 +221,11 @@ port = {}
             let channels_sync_path = tenant_dir.join("channels_sync.json");
             if channels_sync_path.exists() {
                 tracing::info!("📥 Reading channels_sync.json for tenant {}", tenant.slug);
-                if let Ok(content) = std::fs::read_to_string(&channels_sync_path) {
-                    if let Ok(channels) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Ok(content) = std::fs::read_to_string(&channels_sync_path)
+                    && let Ok(channels) = serde_json::from_str::<serde_json::Value>(&content) {
                         // Telegram
-                        if let Some(tg) = channels["telegram"].as_object() {
-                            if tg.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false) {
+                        if let Some(tg) = channels["telegram"].as_object()
+                            && tg.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false) {
                                 let token = tg.get("bot_token").and_then(|v| v.as_str()).unwrap_or("");
                                 if !token.is_empty() {
                                     config_content.push_str(&format!(
@@ -243,10 +239,9 @@ port = {}
                                     }
                                 }
                             }
-                        }
                         // Discord
-                        if let Some(dc) = channels["discord"].as_object() {
-                            if dc.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false) {
+                        if let Some(dc) = channels["discord"].as_object()
+                            && dc.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false) {
                                 let token = dc.get("bot_token").and_then(|v| v.as_str()).unwrap_or("");
                                 if !token.is_empty() {
                                     config_content.push_str(&format!(
@@ -254,10 +249,9 @@ port = {}
                                     ));
                                 }
                             }
-                        }
                         // Email
-                        if let Some(em) = channels["email"].as_object() {
-                            if em.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false) {
+                        if let Some(em) = channels["email"].as_object()
+                            && em.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false) {
                                 let email = em.get("email").and_then(|v| v.as_str()).unwrap_or("");
                                 let password = em.get("password").and_then(|v| v.as_str()).unwrap_or("");
                                 if !email.is_empty() {
@@ -271,20 +265,18 @@ port = {}
                                     ));
                                 }
                             }
-                        }
                         // Webhook
-                        if let Some(wh) = channels["webhook"].as_object() {
-                            if wh.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false) {
+                        if let Some(wh) = channels["webhook"].as_object()
+                            && wh.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false) {
                                 let url = wh.get("outbound_url").and_then(|v| v.as_str()).unwrap_or("");
                                 config_content.push_str(&format!(
                                     "\n[channel.webhook]\nenabled = true\noutbound_url = \"{}\"\nsecret = \"{}\"\n",
                                     url, wh.get("secret").and_then(|v| v.as_str()).unwrap_or("")
                                 ));
                             }
-                        }
                         // WhatsApp
-                        if let Some(wa) = channels["whatsapp"].as_object() {
-                            if wa.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false) {
+                        if let Some(wa) = channels["whatsapp"].as_object()
+                            && wa.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false) {
                                 config_content.push_str(&format!(
                                     "\n[channel.whatsapp]\nenabled = true\nphone_number_id = \"{}\"\naccess_token = \"{}\"\nwebhook_verify_token = \"{}\"\n",
                                     wa.get("phone_number_id").and_then(|v| v.as_str()).unwrap_or(""),
@@ -292,19 +284,16 @@ port = {}
                                     wa.get("webhook_verify_token").and_then(|v| v.as_str()).unwrap_or(""),
                                 ));
                             }
-                        }
                         // Zalo
-                        if let Some(zl) = channels["zalo"].as_object() {
-                            if zl.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false) {
+                        if let Some(zl) = channels["zalo"].as_object()
+                            && zl.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false) {
                                 let imei = zl.get("imei").and_then(|v| v.as_str()).unwrap_or("");
                                 config_content.push_str(&format!(
                                     "\n[channel.zalo]\nenabled = true\nmode = \"personal\"\n\n[channel.zalo.personal]\nimei = \"{}\"\n",
                                     imei
                                 ));
                             }
-                        }
                     }
-                }
             }
         }
 
@@ -312,9 +301,9 @@ port = {}
 
         // ── Import existing agents.json into DB if needed ──────────
         let agents_file = tenant_dir.join("agents.json");
-        if agents_file.exists() {
-            if let Ok(content) = std::fs::read_to_string(&agents_file) {
-                if let Ok(agents_arr) = serde_json::from_str::<Vec<serde_json::Value>>(&content) {
+        if agents_file.exists()
+            && let Ok(content) = std::fs::read_to_string(&agents_file)
+                && let Ok(agents_arr) = serde_json::from_str::<Vec<serde_json::Value>>(&content) {
                     let db_agents = db.list_agents(&tenant.id).unwrap_or_default();
                     let db_names: Vec<String> = db_agents.iter().map(|a| a.name.clone()).collect();
                     let mut imported = 0;
@@ -337,12 +326,10 @@ port = {}
                         tracing::info!("  📥 Imported {} agent(s) from agents.json into DB", imported);
                     }
                 }
-            }
-        }
 
         // ── Generate agents.json from DB ──────────
-        if let Ok(agents) = db.list_agents(&tenant.id) {
-            if !agents.is_empty() {
+        if let Ok(agents) = db.list_agents(&tenant.id)
+            && !agents.is_empty() {
                 let agents_json: Vec<serde_json::Value> = agents.iter().map(|a| {
                     serde_json::json!({
                         "name": a.name,
@@ -358,7 +345,6 @@ port = {}
                 }
                 tracing::info!("  📋 Generated agents.json with {} agent(s)", agents.len());
             }
-        }
 
         // Write pairing code for gateway auth
         if let Some(ref code) = tenant.pairing_code {
@@ -373,7 +359,7 @@ port = {}
             .open(&log_path)
             .ok();
         let stdout = log_file.as_ref().map(|f| std::process::Stdio::from(f.try_clone().unwrap())).unwrap_or(std::process::Stdio::null());
-        let stderr = log_file.map(|f| std::process::Stdio::from(f)).unwrap_or(std::process::Stdio::null());
+        let stderr = log_file.map(std::process::Stdio::from).unwrap_or(std::process::Stdio::null());
 
         let child = Command::new(bizclaw_bin)
             .args(["serve", "--port", &tenant.port.to_string()])

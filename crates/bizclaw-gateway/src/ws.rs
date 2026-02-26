@@ -481,9 +481,9 @@ async fn chat_ollama(
             if line.trim().is_empty() {
                 continue;
             }
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(line) {
-                if let Some(content) = json["message"]["content"].as_str() {
-                    if !content.is_empty() {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(line)
+                && let Some(content) = json["message"]["content"].as_str()
+                    && !content.is_empty() {
                         full_content.push_str(content);
                         let _ = send_json(
                             socket,
@@ -497,8 +497,6 @@ async fn chat_ollama(
                         .await;
                         chunk_idx += 1;
                     }
-                }
-            }
         }
 
         let _ = send_json(
@@ -620,10 +618,10 @@ async fn chat_openai(
             if line.is_empty() || line == "data: [DONE]" {
                 continue;
             }
-            if let Some(data) = line.strip_prefix("data: ") {
-                if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
-                    if let Some(content) = json["choices"][0]["delta"]["content"].as_str() {
-                        if !content.is_empty() {
+            if let Some(data) = line.strip_prefix("data: ")
+                && let Ok(json) = serde_json::from_str::<serde_json::Value>(data)
+                    && let Some(content) = json["choices"][0]["delta"]["content"].as_str()
+                        && !content.is_empty() {
                             full_content.push_str(content);
                             let _ = send_json(
                                 socket,
@@ -637,9 +635,6 @@ async fn chat_openai(
                             .await;
                             chunk_idx += 1;
                         }
-                    }
-                }
-            }
         }
 
         let _ = send_json(

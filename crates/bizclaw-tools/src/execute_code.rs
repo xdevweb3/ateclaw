@@ -145,7 +145,7 @@ impl Tool for ExecuteCodeTool {
 
         let file_name = format!(
             "exec_{}.{}",
-            uuid::Uuid::new_v4().to_string()[..8].to_string(),
+            &uuid::Uuid::new_v4().to_string()[..8],
             config.extension
         );
         let file_path = temp_dir.join(&file_name);
@@ -159,7 +159,7 @@ impl Tool for ExecuteCodeTool {
             // Compile then run
             let out_path = temp_dir.join(format!(
                 "exec_{}",
-                uuid::Uuid::new_v4().to_string()[..8].to_string()
+                &uuid::Uuid::new_v4().to_string()[..8]
             ));
 
             let compile_output = if config.command == "rustc" {

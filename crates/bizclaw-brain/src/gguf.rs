@@ -189,7 +189,7 @@ impl TensorInfo {
         let n = self.n_elements() as usize;
         let bs = self.ggml_type.block_size();
         let ts = self.ggml_type.type_size();
-        ((n + bs - 1) / bs * ts) as u64
+        (n.div_ceil(bs) * ts) as u64
     }
 }
 
@@ -267,7 +267,7 @@ impl GgufFile {
         let current_pos = reader
             .stream_position()
             .map_err(|e| BizClawError::GgufParse(e.to_string()))?;
-        let data_offset = (current_pos + alignment - 1) / alignment * alignment;
+        let data_offset = current_pos.div_ceil(alignment) * alignment;
 
         Ok(GgufFile {
             version,

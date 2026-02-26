@@ -45,9 +45,8 @@ fn is_valid_email(email: &str) -> bool {
     if domain.starts_with('.') || domain.ends_with('.') 
        || domain.starts_with('-') || domain.ends_with('-') { return false; }
     // TLD must be at least 2 chars
-    if let Some(tld) = domain.rsplit('.').next() {
-        if tld.len() < 2 || !tld.chars().all(|c| c.is_ascii_alphanumeric()) { return false; }
-    }
+    if let Some(tld) = domain.rsplit('.').next()
+        && (tld.len() < 2 || !tld.chars().all(|c| c.is_ascii_alphanumeric())) { return false; }
     // Total length check
     email.len() >= 5 && email.len() <= 254
 }
@@ -239,7 +238,7 @@ pub async fn forgot_password_handler(
     }
 
     // Generate secure token
-    let token = format!("{}-{}", uuid::Uuid::new_v4().to_string(), uuid::Uuid::new_v4().to_string());
+    let token = format!("{}-{}", uuid::Uuid::new_v4(), uuid::Uuid::new_v4());
     let expires_at = chrono::Utc::now().timestamp() + 3600; // 1 hour validity
 
     {

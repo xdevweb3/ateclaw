@@ -26,6 +26,7 @@ pub struct TokenJsonProps {
 
 /// JSON parsing state — tracks structure validity.
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct JsonState {
     pub brace_depth: i32,
     pub bracket_depth: i32,
@@ -35,18 +36,6 @@ pub struct JsonState {
     pub completed: bool,
 }
 
-impl Default for JsonState {
-    fn default() -> Self {
-        Self {
-            brace_depth: 0,
-            bracket_depth: 0,
-            in_string: false,
-            expect_value: false,
-            started: false,
-            completed: false,
-        }
-    }
-}
 
 impl JsonGrammar {
     /// Analyze all tokens in vocabulary for JSON properties (done once at load).

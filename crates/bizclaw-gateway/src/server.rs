@@ -102,11 +102,10 @@ async fn require_pairing(
     // Check query param ?code=
     if let Some(query) = req.uri().query() {
         for pair in query.split('&') {
-            if let Some(code) = pair.strip_prefix("code=") {
-                if constant_time_eq(code, expected) {
+            if let Some(code) = pair.strip_prefix("code=")
+                && constant_time_eq(code, expected) {
                     return next.run(req).await;
                 }
-            }
         }
     }
 
@@ -587,15 +586,15 @@ pub async fn start(config: &GatewayConfig) -> anyhow::Result<()> {
         config_path: config_path.clone(),
         start_time: std::time::Instant::now(),
         pairing_code: if config.require_pairing {
-            let code = std::env::var("BIZCLAW_PAIRING_CODE").ok().or_else(|| {
+            
+            std::env::var("BIZCLAW_PAIRING_CODE").ok().or_else(|| {
                 config_path.parent().and_then(|d| {
                     let pc = d.join(".pairing_code");
                     std::fs::read_to_string(pc)
                         .ok()
                         .map(|s| s.trim().to_string())
                 })
-            });
-            code
+            })
         } else {
             None
         },

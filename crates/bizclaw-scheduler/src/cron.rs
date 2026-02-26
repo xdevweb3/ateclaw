@@ -9,7 +9,7 @@ use chrono::{DateTime, Duration, Timelike, Utc};
 
 /// Parse a simple cron expression and compute the next run time.
 pub fn next_run_from_cron(expression: &str, after: DateTime<Utc>) -> Option<DateTime<Utc>> {
-    let parts: Vec<&str> = expression.trim().split_whitespace().collect();
+    let parts: Vec<&str> = expression.split_whitespace().collect();
     if parts.len() != 5 {
         tracing::warn!(
             "Invalid cron expression: '{}' (need 5 fields: MIN HOUR DOM MON DOW)",
@@ -41,7 +41,7 @@ pub fn next_run_from_cron(expression: &str, after: DateTime<Utc>) -> Option<Date
         if minutes.contains(&m) && hours.contains(&h) {
             return Some(candidate);
         }
-        candidate = candidate + Duration::minutes(1);
+        candidate += Duration::minutes(1);
     }
 
     None

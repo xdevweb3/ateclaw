@@ -218,11 +218,10 @@ impl WorkflowEngine {
         }
 
         // Check channel filter
-        if let Some(channel) = rule.trigger_config["channel"].as_str() {
-            if channel != event.source {
+        if let Some(channel) = rule.trigger_config["channel"].as_str()
+            && channel != event.source {
                 return false;
             }
-        }
 
         true
     }

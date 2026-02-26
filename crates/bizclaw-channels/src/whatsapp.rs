@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 /// WhatsApp Business channel configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct WhatsAppConfig {
     /// Facebook Graph API access token
     pub access_token: String,
@@ -25,16 +26,6 @@ pub struct WhatsAppConfig {
     pub business_id: String,
 }
 
-impl Default for WhatsAppConfig {
-    fn default() -> Self {
-        Self {
-            access_token: String::new(),
-            phone_number_id: String::new(),
-            webhook_verify_token: String::new(),
-            business_id: String::new(),
-        }
-    }
-}
 
 /// WhatsApp Business channel implementation.
 pub struct WhatsAppChannel {

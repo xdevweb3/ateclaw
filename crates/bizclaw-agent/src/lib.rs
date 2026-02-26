@@ -123,8 +123,7 @@ impl Agent {
 
         let prompt_cache = PromptCache::new(&system_prompt, &tools);
 
-        let mut conversation = vec![];
-        conversation.push(Message::system(&system_prompt));
+        let conversation = vec![Message::system(&system_prompt)];
 
         Ok(Self {
             config,
@@ -214,8 +213,7 @@ impl Agent {
 
         let prompt_cache = PromptCache::new(&system_prompt, &tools);
 
-        let mut conversation = vec![];
-        conversation.push(Message::system(&system_prompt));
+        let conversation = vec![Message::system(&system_prompt)];
 
         Ok(Self {
             config,
@@ -288,7 +286,7 @@ impl Agent {
         // Phase 1: Knowledge Base RAG
         // ═══════════════════════════════════════
         if let Some(kb_context) = self.search_knowledge(user_message).await {
-            self.conversation.push(Message::system(&format!(
+            self.conversation.push(Message::system(format!(
                 "[Knowledge Base — relevant documents]\n{kb_context}\n[End of knowledge context]"
             )));
         }
@@ -297,7 +295,7 @@ impl Agent {
         // Phase 2: Memory Retrieval
         // ═══════════════════════════════════════
         if let Some(memory_ctx) = self.retrieve_memory(user_message).await {
-            self.conversation.push(Message::system(&format!(
+            self.conversation.push(Message::system(format!(
                 "[Past conversations]\n{memory_ctx}\n[End of past conversations]"
             )));
         }
@@ -372,21 +370,17 @@ impl Agent {
                 );
 
                 // Security check for shell commands
-                if tc.function.name == "shell" {
-                    if let Ok(args) =
+                if tc.function.name == "shell"
+                    && let Ok(args) =
                         serde_json::from_str::<serde_json::Value>(&tc.function.arguments)
-                    {
-                        if let Some(cmd) = args["command"].as_str() {
-                            if !self.security.check_command(cmd).await? {
+                        && let Some(cmd) = args["command"].as_str()
+                            && !self.security.check_command(cmd).await? {
                                 tool_results.push(Message::tool(
                                     format!("Permission denied: command '{}' not allowed", cmd),
                                     &tc.id,
                                 ));
                                 continue;
                             }
-                        }
-                    }
-                }
 
                 // Execute tool
                 if let Some(tool) = self.tools.get(&tc.function.name) {

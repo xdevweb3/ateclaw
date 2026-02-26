@@ -55,7 +55,7 @@ impl TelegramChannel {
     pub async fn get_updates(&mut self) -> Result<Vec<TelegramUpdate>> {
         let response = self
             .client
-            .get(&self.api_url("getUpdates"))
+            .get(self.api_url("getUpdates"))
             .query(&[
                 ("offset", (self.last_update_id + 1).to_string()),
                 ("timeout", "30".into()),
@@ -94,7 +94,7 @@ impl TelegramChannel {
 
         let response = self
             .client
-            .post(&self.api_url("sendMessage"))
+            .post(self.api_url("sendMessage"))
             .json(&body)
             .send()
             .await
@@ -122,7 +122,7 @@ impl TelegramChannel {
         });
         let _ = self
             .client
-            .post(&self.api_url("sendChatAction"))
+            .post(self.api_url("sendChatAction"))
             .json(&body)
             .send()
             .await;
@@ -133,7 +133,7 @@ impl TelegramChannel {
     pub async fn get_me(&self) -> Result<TelegramUser> {
         let response = self
             .client
-            .get(&self.api_url("getMe"))
+            .get(self.api_url("getMe"))
             .send()
             .await
             .map_err(|e| BizClawError::Channel(format!("getMe failed: {e}")))?;
@@ -158,12 +158,11 @@ impl TelegramChannel {
                 match channel.get_updates().await {
                     Ok(updates) => {
                         for update in updates {
-                            if let Some(msg) = update.to_incoming() {
-                                if tx.send(msg).is_err() {
+                            if let Some(msg) = update.to_incoming()
+                                && tx.send(msg).is_err() {
                                     tracing::info!("Telegram polling stopped (receiver dropped)");
                                     return;
                                 }
-                            }
                         }
                     }
                     Err(e) => {

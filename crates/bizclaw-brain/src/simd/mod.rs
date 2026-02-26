@@ -28,7 +28,7 @@ pub fn dot_product_simd(a: &[f32], b: &[f32]) -> f32 {
 
     #[cfg(all(target_arch = "x86_64", not(target_feature = "avx2")))]
     {
-        return sse2::dot_product_sse2(a, b);
+        sse2::dot_product_sse2(a, b)
     }
 
     // Fallback

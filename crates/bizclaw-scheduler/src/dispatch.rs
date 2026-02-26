@@ -189,8 +189,8 @@ pub fn targets_from_config(config: &bizclaw_core::config::BizClawConfig) -> Vec<
     let mut targets = Vec::new();
 
     // Telegram
-    if let Some(tg) = &config.channel.telegram {
-        if tg.enabled && !tg.bot_token.is_empty() {
+    if let Some(tg) = &config.channel.telegram
+        && tg.enabled && !tg.bot_token.is_empty() {
             // We don't know the chat_id at init time — it's per-user.
             // For notifications, the admin should configure a notification chat_id.
             // For now, we'll store the token and use a config-based chat_id.
@@ -202,17 +202,15 @@ pub fn targets_from_config(config: &bizclaw_core::config::BizClawConfig) -> Vec<
                 }));
             }
         }
-    }
 
     // Webhook
-    if let Some(wh) = &config.channel.webhook {
-        if wh.enabled && !wh.outbound_url.is_empty() {
+    if let Some(wh) = &config.channel.webhook
+        && wh.enabled && !wh.outbound_url.is_empty() {
             targets.push(("webhook".to_string(), NotifyTarget::Webhook {
                 url: wh.outbound_url.clone(),
                 headers: vec![],
             }));
         }
-    }
 
     // Dashboard is always available
     targets.push(("dashboard".to_string(), NotifyTarget::Dashboard));

@@ -92,7 +92,7 @@ impl SecretStore {
                 .mode(0o600)
                 .open(&self.secrets_path)?;
             file.write_all(content.as_bytes())?;
-            return Ok(());
+            Ok(())
         }
 
         #[cfg(not(unix))]
@@ -160,7 +160,7 @@ fn encrypt_aes256(data: &[u8], key: &[u8; 32]) -> Vec<u8> {
     // PKCS7 padding
     let padding_len = block_size - (data.len() % block_size);
     let mut padded = data.to_vec();
-    padded.extend(std::iter::repeat(padding_len as u8).take(padding_len));
+    padded.extend(std::iter::repeat_n(padding_len as u8, padding_len));
 
     let mut encrypted = Vec::with_capacity(padded.len());
     for chunk in padded.chunks(block_size) {

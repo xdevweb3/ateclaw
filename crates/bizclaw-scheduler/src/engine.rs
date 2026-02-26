@@ -154,11 +154,10 @@ impl SchedulerEngine {
     fn recompute_cron_times(&mut self) {
         let now = Utc::now();
         for task in self.tasks.iter_mut() {
-            if let TaskType::Cron { expression } = &task.task_type {
-                if task.next_run.is_none() || task.next_run.map_or(false, |nr| nr < now) {
+            if let TaskType::Cron { expression } = &task.task_type
+                && (task.next_run.is_none() || task.next_run.is_some_and(|nr| nr < now)) {
                     task.next_run = cron::next_run_from_cron(expression, now);
                 }
-            }
         }
     }
 

@@ -116,8 +116,8 @@ impl Provider for BrainProvider {
 
         // List available models in ~/.bizclaw/models/
         let model_dir = BizClawConfig::home_dir().join("models");
-        if model_dir.exists() {
-            if let Ok(entries) = std::fs::read_dir(&model_dir) {
+        if model_dir.exists()
+            && let Ok(entries) = std::fs::read_dir(&model_dir) {
                 for entry in entries.flatten() {
                     let path = entry.path();
                     if path.extension().and_then(|e| e.to_str()) == Some("gguf") {
@@ -141,7 +141,6 @@ impl Provider for BrainProvider {
                     }
                 }
             }
-        }
 
         if models.is_empty() {
             models.push(ModelInfo {

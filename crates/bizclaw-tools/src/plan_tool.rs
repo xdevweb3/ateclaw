@@ -501,8 +501,8 @@ impl Tool for PlanTool {
                 if let Some(idx) = task_idx {
                     let deps = plan.tasks[idx].dependencies.clone();
                     for dep_id in &deps {
-                        if let Some(dep) = plan.tasks.iter().find(|t| t.id == *dep_id) {
-                            if dep.status != TaskStatus::Completed {
+                        if let Some(dep) = plan.tasks.iter().find(|t| t.id == *dep_id)
+                            && dep.status != TaskStatus::Completed {
                                 return Ok(ToolResult {
                                     tool_call_id: String::new(),
                                     output: format!(
@@ -512,7 +512,6 @@ impl Tool for PlanTool {
                                     success: false,
                                 });
                             }
-                        }
                     }
                     // Now mutate
                     plan.tasks[idx].status = TaskStatus::InProgress;

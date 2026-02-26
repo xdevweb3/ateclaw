@@ -266,6 +266,7 @@ impl PlatformDb {
     // ── Tenant CRUD ────────────────────────────────────
 
     /// Create a new tenant.
+    #[allow(clippy::too_many_arguments)]
     pub fn create_tenant(
         &self,
         name: &str,
@@ -817,6 +818,7 @@ impl PlatformDb {
     // ── Tenant Agents ────────────────────────────────────
 
     /// Create or update an agent for a tenant.
+    #[allow(clippy::too_many_arguments)]
     pub fn upsert_agent(
         &self,
         tenant_id: &str,

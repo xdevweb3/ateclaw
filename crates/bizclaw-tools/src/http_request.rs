@@ -102,14 +102,11 @@ impl Tool for HttpRequestTool {
         // Add custom headers
         if let Some(headers) = args["headers"].as_object() {
             for (key, value) in headers {
-                if let Some(val_str) = value.as_str() {
-                    if let Ok(header_name) = reqwest::header::HeaderName::from_bytes(key.as_bytes())
-                    {
-                        if let Ok(header_val) = reqwest::header::HeaderValue::from_str(val_str) {
+                if let Some(val_str) = value.as_str()
+                    && let Ok(header_name) = reqwest::header::HeaderName::from_bytes(key.as_bytes())
+                        && let Ok(header_val) = reqwest::header::HeaderValue::from_str(val_str) {
                             request = request.header(header_name, header_val);
                         }
-                    }
-                }
             }
         }
 
@@ -121,11 +118,9 @@ impl Tool for HttpRequestTool {
                 .as_object()
                 .map(|h| !h.contains_key("content-type"))
                 .unwrap_or(true)
-            {
-                if body.starts_with('{') || body.starts_with('[') {
+                && (body.starts_with('{') || body.starts_with('[')) {
                     request = request.header("Content-Type", "application/json");
                 }
-            }
         }
 
         let start = std::time::Instant::now();

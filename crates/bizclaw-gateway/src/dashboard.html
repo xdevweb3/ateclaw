@@ -3808,7 +3808,7 @@ async function loadOrchestrationPage() {
         const name = a.name || a.id || '';
         const role = a.role || '';
         const icon = role === 'coder' ? '💻' : role === 'researcher' ? '🔬' : role === 'writer' ? '✍️' : role === 'analyst' ? '📊' : '🤖';
-        const opt = `<option value="${esc(name)}">${icon} ${esc(name)} (${esc(role)})</option>`;
+        const opt = `<option value="${escapeHtml(name)}">${icon} ${escapeHtml(name)} (${escapeHtml(role)})</option>`;
         fromSel.innerHTML += opt;
         toSel.innerHTML += opt;
       });

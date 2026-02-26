@@ -196,7 +196,7 @@ impl McpClient {
 
     /// Check if connected and alive.
     pub fn is_connected(&mut self) -> bool {
-        self.transport.as_mut().map_or(false, |t| t.is_alive())
+        self.transport.as_mut().is_some_and(|t| t.is_alive())
     }
 
     /// Disconnect from the MCP server.

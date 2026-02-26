@@ -39,13 +39,12 @@ async fn require_auth(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
 
-    if let Some(token) = auth_header.strip_prefix("Bearer ") {
-        if let Ok(claims) = crate::auth::validate_token(token, &state.jwt_secret) {
+    if let Some(token) = auth_header.strip_prefix("Bearer ")
+        && let Ok(claims) = crate::auth::validate_token(token, &state.jwt_secret) {
             let mut req = req;
             req.extensions_mut().insert(claims);
             return next.run(req).await;
         }
-    }
 
     axum::response::Response::builder()
         .status(axum::http::StatusCode::UNAUTHORIZED)
@@ -1187,11 +1186,10 @@ async fn set_tenant_configs(
     }
 
     // Also update the tenants table provider/model for consistency
-    if let Some(provider) = configs.get("default_provider").and_then(|v| v.as_str()) {
-        if let Some(model) = configs.get("default_model").and_then(|v| v.as_str()) {
+    if let Some(provider) = configs.get("default_provider").and_then(|v| v.as_str())
+        && let Some(model) = configs.get("default_model").and_then(|v| v.as_str()) {
             db.update_tenant_provider(&id, provider, model).ok();
         }
-    }
 
     drop(db);
     state.db.lock().unwrap().log_event(
@@ -1599,11 +1597,10 @@ async fn update_user_role_handler(
     {
         let db = state.db.lock().unwrap();
         let users = db.list_users().unwrap_or_default();
-        if let Some(target) = users.iter().find(|u| u.id == id) {
-            if target.email == "admin@bizclaw.vn" {
+        if let Some(target) = users.iter().find(|u| u.id == id)
+            && target.email == "admin@bizclaw.vn" {
                 return Json(serde_json::json!({"ok": false, "error": "Không thể thay đổi role của Super Admin gốc."}));
             }
-        }
     }
 
     let db_res = state.db.lock().unwrap().update_user_role(&id, &req.role);

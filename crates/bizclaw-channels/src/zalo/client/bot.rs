@@ -266,11 +266,10 @@ impl ZaloBotClient {
             serde_json::from_value(resp["result"].clone()).unwrap_or_default();
 
         // Track last update ID for polling
-        if let Some(last) = updates.last() {
-            if let Some(id) = last.update_id {
+        if let Some(last) = updates.last()
+            && let Some(id) = last.update_id {
                 self.last_update_id = Some(id);
             }
-        }
 
         Ok(updates)
     }
