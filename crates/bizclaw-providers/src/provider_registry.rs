@@ -160,6 +160,64 @@ static GROQ_MODELS: &[ModelDef] = &[
     },
 ];
 
+static MISTRAL_MODELS: &[ModelDef] = &[
+    ModelDef {
+        id: "mistral-large-latest",
+        name: "Mistral Large",
+        context_length: 128000,
+        max_output_tokens: Some(8192),
+    },
+    ModelDef {
+        id: "mistral-small-latest",
+        name: "Mistral Small",
+        context_length: 128000,
+        max_output_tokens: Some(8192),
+    },
+];
+
+static MINIMAX_MODELS: &[ModelDef] = &[ModelDef {
+    id: "MiniMax-Text-01",
+    name: "MiniMax Text 01",
+    context_length: 1000000,
+    max_output_tokens: Some(8192),
+}];
+
+static XAI_MODELS: &[ModelDef] = &[
+    ModelDef {
+        id: "grok-3",
+        name: "Grok 3",
+        context_length: 131072,
+        max_output_tokens: Some(16384),
+    },
+    ModelDef {
+        id: "grok-3-mini",
+        name: "Grok 3 Mini",
+        context_length: 131072,
+        max_output_tokens: Some(16384),
+    },
+];
+
+static MODELARK_MODELS: &[ModelDef] = &[
+    ModelDef {
+        id: "doubao-1-5-pro-256k-250115",
+        name: "Doubao 1.5 Pro 256K",
+        context_length: 256000,
+        max_output_tokens: Some(16384),
+    },
+    ModelDef {
+        id: "doubao-1-5-pro-32k-250115",
+        name: "Doubao 1.5 Pro 32K",
+        context_length: 32000,
+        max_output_tokens: Some(16384),
+    },
+    ModelDef {
+        id: "doubao-seed-1-6-thinking-250715",
+        name: "Doubao Seed 1.6 Thinking",
+        context_length: 128000,
+        max_output_tokens: Some(16384),
+    },
+];
+
 static OLLAMA_MODELS: &[ModelDef] = &[ModelDef {
     id: "llama3.2",
     name: "Llama 3.2 (Ollama)",
@@ -303,6 +361,46 @@ static PROVIDERS: &[ProviderConfig] = &[
             max_output_tokens: Some(4096),
         }],
     },
+    ProviderConfig {
+        name: "mistral",
+        base_url: "https://api.mistral.ai/v1",
+        chat_path: "/chat/completions",
+        models_path: "/models",
+        env_keys: &["MISTRAL_API_KEY"],
+        auth_style: AuthStyle::Bearer,
+        base_url_env: None,
+        default_models: MISTRAL_MODELS,
+    },
+    ProviderConfig {
+        name: "minimax",
+        base_url: "https://api.minimax.chat/v1",
+        chat_path: "/chat/completions",
+        models_path: "/models",
+        env_keys: &["MINIMAX_API_KEY"],
+        auth_style: AuthStyle::Bearer,
+        base_url_env: None,
+        default_models: MINIMAX_MODELS,
+    },
+    ProviderConfig {
+        name: "xai",
+        base_url: "https://api.x.ai/v1",
+        chat_path: "/chat/completions",
+        models_path: "/models",
+        env_keys: &["XAI_API_KEY"],
+        auth_style: AuthStyle::Bearer,
+        base_url_env: None,
+        default_models: XAI_MODELS,
+    },
+    ProviderConfig {
+        name: "modelark",
+        base_url: "https://ark.ap-southeast.bytepluses.com/api/v3",
+        chat_path: "/chat/completions",
+        models_path: "/models",
+        env_keys: &["ARK_API_KEY"],
+        auth_style: AuthStyle::Bearer,
+        base_url_env: Some("ARK_BASE_URL"),
+        default_models: MODELARK_MODELS,
+    },
 ];
 
 /// Look up a provider config by name.
@@ -313,6 +411,8 @@ pub fn get_provider_config(name: &str) -> Option<&'static ProviderConfig> {
         "llama.cpp" => "llamacpp",
         "cli_proxy" | "cliproxyapi" | "CLIProxy" => "cliproxy",
         "together_ai" | "togetherai" => "together",
+        "grok" => "xai",
+        "bytedance" | "doubao" | "ark" | "volcengine" => "modelark",
         other => other,
     };
     PROVIDERS.iter().find(|p| p.name == lookup)
