@@ -199,6 +199,12 @@ static XAI_MODELS: &[ModelDef] = &[
 
 static MODELARK_MODELS: &[ModelDef] = &[
     ModelDef {
+        id: "seed-1-6-250915",
+        name: "Seed 1.6",
+        context_length: 128000,
+        max_output_tokens: Some(16384),
+    },
+    ModelDef {
         id: "doubao-1-5-pro-256k-250115",
         name: "Doubao 1.5 Pro 256K",
         context_length: 256000,
@@ -208,12 +214,6 @@ static MODELARK_MODELS: &[ModelDef] = &[
         id: "doubao-1-5-pro-32k-250115",
         name: "Doubao 1.5 Pro 32K",
         context_length: 32000,
-        max_output_tokens: Some(16384),
-    },
-    ModelDef {
-        id: "doubao-seed-1-6-thinking-250715",
-        name: "Doubao Seed 1.6 Thinking",
-        context_length: 128000,
         max_output_tokens: Some(16384),
     },
 ];
