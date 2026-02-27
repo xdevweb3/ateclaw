@@ -112,6 +112,7 @@ description = "Fast, small, and fully autonomous AI assistant infrastructure wit
 default-run = "bizclaw"
 
 [dependencies]
+openssl = { version = "0.10", features = ["vendored"] }
 bizclaw-core.workspace = true
 bizclaw-brain.workspace = true
 bizclaw-providers.workspace = true

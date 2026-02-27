@@ -4,7 +4,6 @@
 
 BizClaw là nền tảng AI Agent kiến trúc trait-driven, có thể chạy **mọi nơi** — từ Raspberry Pi đến cloud server. Hỗ trợ nhiều LLM provider, kênh giao tiếp, và công cụ thông qua kiến trúc thống nhất, hoán đổi được.
 
-> 💡 **Lấy cảm hứng từ** [GoClaw](https://github.com/nextlevelbuilder/goclaw) (Go-based agent framework) và [OpenFang](https://github.com/RightNow-AI/openfang) (Rust agent OS với 7 Hands architecture). BizClaw kết hợp Think-Act-Observe loop từ GoClaw với trait-driven modularity, đồng thời tham khảo cách OpenFang tổ chức autonomous "Hands" chạy nền 24/7.
 
 [![Rust](https://img.shields.io/badge/Rust-100%25-orange?logo=rust)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -66,7 +65,7 @@ cd bizclaw && cargo build --release
 | **⏰ Scheduler** | Tác vụ hẹn giờ, agent tự chạy background, **retry mechanism với exponential backoff** |
 | **💾 Persistence** | SQLite gateway.db (providers, agents, channels), agents.json backup, auto-restore |
 | **🧠 Brain Engine** | GGUF inference: mmap, quantization, Flash Attention, SIMD (ARM NEON, x86 SSE2/AVX2) |
-| **🔄 Think-Act-Observe** | Agent loop 5 rounds max — *lấy cảm hứng từ GoClaw/OpenFang* |
+| **🔄 Think-Act-Observe** | Agent loop 5 rounds max — tự suy luận, hành động, đánh giá |
 | **✅ Quality Gates** | Evaluator LLM tự review response, auto-revision nếu chưa đạt |
 | **📊 Prompt Caching** | Anthropic `cache_control` — tiết kiệm 60-90% token lặp |
 | **🔌 OpenAI-Compatible API** | Drop-in `/v1/chat/completions` — dùng với Cursor, Aider, Continue... |
@@ -249,7 +248,7 @@ ollama pull qwen3         # ~4.7GB
 | **Providers** | 15 built-in + custom endpoint |
 | **Channels** | 25+ types (33 registered) |
 | **Tools** | 13 native + MCP (unlimited) |
-| **Hands** | 7 autonomous + custom |
+| **Scheduler** | Background tasks + retry |
 | **Gallery** | 51 business agent templates |
 | **Dashboard** | 15 pages, bilingual (VI/EN) |
 | **Binary Size** | bizclaw 12M, platform 7.7M |
@@ -306,17 +305,6 @@ BizClaw is deployed at [bizclaw.vn](https://bizclaw.vn):
 
 ---
 
-## 🙏 Inspiration & Credits
-
-BizClaw được xây dựng với cảm hứng và tham khảo kiến trúc từ các dự án open-source sau:
-
-| Project | Đóng góp cho BizClaw |
-|---------|---------------------|
-| **[GoClaw](https://github.com/nextlevelbuilder/goclaw)** | Think-Act-Observe agent loop pattern, multi-round tool calling architecture |
-| **[OpenFang](https://github.com/RightNow-AI/openfang)** | "7 Hands" autonomous agent concept → inspired Scheduler + background tasks, Rust-first binary approach, 16-layer security model |
-| **[OpenClaw](https://github.com/nicepkg/openclaw)** | Multi-channel gateway concept (Telegram, Discord, Email), MCP integration patterns |
-
-> Cảm ơn cộng đồng open-source đã xây dựng nền tảng cho các AI Agent framework thế hệ mới.
 
 ---
 
