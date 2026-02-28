@@ -12,6 +12,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+
     <application
         android:name=".BizClawApp"
         android:allowBackup="true"
@@ -36,6 +38,19 @@
             android:name=".service.BizClawDaemonService"
             android:exported="false"
             android:foregroundServiceType="specialUse" />
+
+        <!-- Accessibility Service — enables control of other apps -->
+        <service
+            android:name=".service.BizClawAccessibilityService"
+            android:exported="false"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
 
         <!-- Auto-start after phone boot -->
         <receiver
