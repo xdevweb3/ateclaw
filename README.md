@@ -17,7 +17,7 @@ BizClaw là hạ tầng AI Agent module hoá, kiến trúc trait-driven. Không 
 [![Rust](https://img.shields.io/badge/Rust-100%25-orange?logo=rust)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-240%20passing-brightgreen)]()
-[![Crates](https://img.shields.io/badge/crates-18-success)]()
+[![Crates](https://img.shields.io/badge/crates-17-success)]()
 [![LOC](https://img.shields.io/badge/lines-39K+-informational)]()
 [![Clippy](https://img.shields.io/badge/clippy-0%20warnings-brightgreen)]()
 [![Android](https://img.shields.io/badge/Android-Agent%20Platform-34A853?logo=android)](android/)
@@ -315,8 +315,8 @@ ollama pull qwen3         # ~4.7GB
 | Metric | Value |
 |--------|-------|
 | **Language** | 100% Rust + Kotlin (Android) |
-| **Crates** | 18 |
-| **Lines of Code** | ~39,000+ (Rust 36K + Kotlin 2.7K) |
+| **Crates** | 17 |
+| **Lines of Code** | ~41,000 (Rust 38K + Kotlin 3K) |
 | **Tests** | 240 passing |
 | **Clippy Warnings** | **0** ✅ |
 | **Providers** | 15 built-in + custom endpoint |
