@@ -162,15 +162,29 @@ class BizClawAccessibilityService : AccessibilityService() {
 
         /**
          * Press Enter/IME action (send message, submit form).
+         * Note: ACTION_IME_ENTER requires API 30+.
+         * Fallback: click send button by common text.
          */
         fun pressEnter(): Boolean {
             val service = instance ?: return false
             val root = service.rootInActiveWindow ?: return false
 
             val editField = findFocusedEditText(root)
-            return editField?.performAction(
-                AccessibilityNodeInfo.ACTION_IME_ENTER
-            ) ?: false
+            if (editField != null) {
+                // API 30+: use ACTION_IME_ENTER
+                if (android.os.Build.VERSION.SDK_INT >= 30) {
+                    val result = editField.performAction(
+                        AccessibilityNodeInfo.ACTION_IME_ENTER
+                    )
+                    if (result) return true
+                }
+                // Fallback: try to find and click a send button nearby
+                return clickByText("Send")
+                    || clickByText("Gửi")
+                    || clickByText("➤")
+                    || clickByText("►")
+            }
+            return false
         }
 
         /**
@@ -338,7 +352,6 @@ class BizClawAccessibilityService : AccessibilityService() {
             feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
             flags = AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS or
                     AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
-                    AccessibilityServiceInfo.FLAG_REQUEST_ENHANCED_WEB_ACCESSIBILITY or
                     AccessibilityServiceInfo.DEFAULT
             notificationTimeout = 100
         }
