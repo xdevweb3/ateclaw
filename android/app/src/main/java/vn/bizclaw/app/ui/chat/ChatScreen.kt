@@ -28,6 +28,7 @@ fun ChatScreen(
     viewModel: ChatViewModel,
     onOpenAgents: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
+    onOpenDashboard: () -> Unit = {},
 ) {
     val messages = viewModel.messages
     val isLoading by viewModel.isLoading
@@ -71,6 +72,9 @@ fun ChatScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onOpenDashboard) {
+                        Icon(Icons.Default.Dashboard, contentDescription = "Dashboard")
+                    }
                     IconButton(onClick = onOpenAgents) {
                         Icon(Icons.Default.Group, contentDescription = "Agents")
                     }

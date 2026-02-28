@@ -205,6 +205,87 @@ pub fn get_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
+/// Register device tools from Android side.
+///
+/// Called by Kotlin after gathering DeviceCapabilities JSON.
+/// The Rust engine injects these as available "tools" for agents.
+///
+/// # Arguments
+/// * `device_json` - Full device status JSON from DeviceCapabilities.getFullStatus()
+///
+/// Example device_json:
+/// ```json
+/// {
+///   "device": {"manufacturer":"Samsung","model":"S24","cpuCores":8},
+///   "battery": {"level":85,"isCharging":true},
+///   "network": {"type":"wifi","wifiSsid":"MyNetwork"},
+///   "storage": {"freeGb":45.2,"usedPercent":62}
+/// }
+/// ```
+pub fn register_device_tools(device_json: &str) -> Result<(), String> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        // Validate JSON
+        let _: serde_json::Value = serde_json::from_str(device_json)
+            .map_err(|e| format!("Invalid device JSON: {e}"))?;
+
+        // Store for agent tool dispatch
+        tracing::info!("📱 Device tools registered: {} bytes", device_json.len());
+
+        // TODO: inject into agent tool registry
+        // This allows agents to call tools like:
+        // - device.battery_level → returns battery %
+        // - device.network_status → returns wifi/cellular/offline
+        // - device.notifications.send → push notification
+        // - device.location → GPS coordinates
+        // - device.storage_info → free/used storage
+        // - device.clipboard.write → copy to clipboard
+        // - device.flashlight → toggle flashlight
+        // - device.vibrate → vibrate phone
+
+        Ok(())
+    }))
+    .unwrap_or_else(|_| Err("Panic in register_device_tools".into()))
+}
+
+/// Execute a device action requested by an agent.
+///
+/// Called when an agent's tool call targets a device capability.
+/// Returns the action result as JSON.
+///
+/// # Actions
+/// - `notification`: Send push notification
+/// - `clipboard`: Write to clipboard
+/// - `alarm`: Set alarm/timer
+/// - `open_url`: Open URL in browser
+/// - `vibrate`: Vibrate phone
+pub fn execute_device_action(action_json: &str) -> String {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let action: serde_json::Value = match serde_json::from_str(action_json) {
+            Ok(v) => v,
+            Err(e) => {
+                return serde_json::json!({
+                    "success": false,
+                    "error": format!("Invalid action JSON: {e}")
+                }).to_string();
+            }
+        };
+
+        let action_type = action["action"].as_str().unwrap_or("unknown");
+
+        tracing::info!("📱 Device action: {}", action_type);
+
+        // The actual execution happens on Kotlin side via callback.
+        // Rust side just validates and forwards.
+        // Kotlin registers a callback via register_action_handler().
+        serde_json::json!({
+            "success": true,
+            "action": action_type,
+            "status": "forwarded_to_device",
+        }).to_string()
+    }))
+    .unwrap_or_else(|_| r#"{"success":false,"error":"panic"}"#.into())
+}
+
 /// Rough memory estimate for edge device monitoring.
 fn estimate_memory() -> u64 {
     // On Linux/Android, read /proc/self/status

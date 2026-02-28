@@ -4,7 +4,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.animation.*
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
@@ -13,6 +12,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import vn.bizclaw.app.ui.agents.AgentsScreen
 import vn.bizclaw.app.ui.chat.ChatScreen
 import vn.bizclaw.app.ui.chat.ChatViewModel
+import vn.bizclaw.app.ui.dashboard.DashboardScreen
 import vn.bizclaw.app.ui.settings.SettingsScreen
 import vn.bizclaw.app.ui.theme.BizClawTheme
 
@@ -24,7 +24,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             BizClawTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    BizClawApp()
+                    BizClawNavHost()
                 }
             }
         }
@@ -32,19 +32,19 @@ class MainActivity : ComponentActivity() {
 }
 
 enum class Screen {
-    Chat, Agents, Settings
+    Chat, Agents, Settings, Dashboard
 }
 
 @Composable
-fun BizClawApp() {
+fun BizClawNavHost() {
     val chatViewModel: ChatViewModel = viewModel()
     var currentScreen by remember { mutableStateOf(Screen.Chat) }
 
-    // Server config from SharedPreferences (simplified)
-    var serverUrl by remember { mutableStateOf("http://localhost:3001") }
+    // Server config
+    var serverUrl by remember { mutableStateOf("http://127.0.0.1:3001") }
     var apiKey by remember { mutableStateOf("") }
 
-    // Initialize connection
+    // Initialize — connect to LOCAL daemon (running on same phone)
     LaunchedEffect(Unit) {
         chatViewModel.updateServer(serverUrl, apiKey)
     }
@@ -55,6 +55,7 @@ fun BizClawApp() {
                 viewModel = chatViewModel,
                 onOpenAgents = { currentScreen = Screen.Agents },
                 onOpenSettings = { currentScreen = Screen.Settings },
+                onOpenDashboard = { currentScreen = Screen.Dashboard },
             )
         }
 
@@ -77,6 +78,12 @@ fun BizClawApp() {
                     apiKey = key
                     chatViewModel.updateServer(url, key)
                 },
+                onBack = { currentScreen = Screen.Chat },
+            )
+        }
+
+        Screen.Dashboard -> {
+            DashboardScreen(
                 onBack = { currentScreen = Screen.Chat },
             )
         }
