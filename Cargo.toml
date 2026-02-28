@@ -17,6 +17,7 @@ members = [
     "crates/bizclaw-platform",
     "crates/bizclaw-db",
     "crates/bizclaw-hands",
+    "crates/bizclaw-ffi",
 ]
 
 [workspace.package]
@@ -80,7 +81,7 @@ tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 # Email
 lettre = { version = "0.11", features = ["tokio1-native-tls", "builder"] }
-imap = "2"
+async-imap = { version = "0.11", default-features = false, features = ["runtime-tokio"] }
 native-tls = "0.2"
 mail-parser = "0.9"
 # Database abstraction

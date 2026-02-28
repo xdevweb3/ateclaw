@@ -7,6 +7,7 @@
 //! The `BrainProvider` handles local GGUF models separately.
 
 pub mod brain;
+pub mod failover;
 pub mod openai_compatible;
 pub mod provider_registry;
 

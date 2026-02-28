@@ -1,6 +1,6 @@
 //! # BizClaw Hands — Autonomous Agent Capabilities
 //!
-//! Inspired by [OpenFang](https://github.com/RightNow-AI/openfang)'s 7 Hands architecture.
+//! BizClaw's autonomous agent capability framework.
 //!
 //! A "Hand" is an autonomous agent capability that runs independently on a schedule,
 //! executes multi-phase playbooks, builds knowledge, and reports results — all without
@@ -31,6 +31,7 @@ pub mod manifest;
 pub mod guardrails;
 pub mod registry;
 pub mod runner;
+pub mod skills;
 
 pub use hand::{Hand, HandStatus, HandPhase};
 pub use manifest::HandManifest;

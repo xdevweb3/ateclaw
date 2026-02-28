@@ -1,5 +1,26 @@
 # Changelog — BizClaw
 
+## [2026-02-28] — v0.3.0 Edge-Ready Architecture
+
+### Added
+- **Provider Failover** — automatic fallback chain (primary → fallback₁ → fallback₂) with health tracking, cooldown, and atomic counters (~100 bytes/provider)
+- **Lane-based Scheduler** — 4 priority lanes (main/cron/subagent/delegate) with per-lane concurrency limits, prevents agent floods on edge devices
+- **Agent Discovery** — auto-generates `AGENTS.md` for context injection (full details ≤15 agents, compact table >15 agents, keyword search)
+- **SKILL.md Injection** — loads domain expertise files into Hand execution context, supports YAML frontmatter stripping, flat + subdirectory patterns
+- **Android/Edge FFI Layer** (`bizclaw-ffi` crate) — 5-function UniFFI surface (`start_daemon`, `stop_daemon`, `get_status`, `send_message`, `get_version`) with `catch_unwind` safety, 2-thread Tokio runtime for edge devices
+- New crate: `bizclaw-ffi` (cdylib + rlib for Android .so / Raspberry Pi)
+- New modules: `failover.rs`, `lanes.rs`, `discovery.rs`, `skills.rs`
+- Total workspace crates: 16 → **18**
+- Total tests: 227 → **240** (all passing)
+- Zero clippy warnings
+
+### Architecture (Edge-First Design)
+- All new modules designed for <30MB RAM targets
+- Provider failover uses lock-free atomics (no Mutex overhead)
+- Lane scheduler: ~200 bytes per lane, fair priority scheduling
+- FFI layer: `catch_unwind` wraps every export to prevent JVM/Dalvik crashes
+- Target platforms: Linux x86_64, ARM64 (Raspberry Pi 4/5), Android (arm64-v8a)
+
 ## [2026-02-27] — Deploy v2 + 4 New Providers + PageIndex RAG
 
 ### Added
@@ -17,10 +38,6 @@
 - Total AI providers: 11 → **15** built-in
 - Knowledge RAG description: FTS5/BM25 + PageIndex MCP (dual-mode)
 - README: PageIndex as first MCP example
-
-### Removed
-- GoClaw/OpenFang/OpenClaw references from README
-- Inspiration & Credits section
 
 ### Infrastructure
 - VPS: `116.118.2.98` running binary v2 (commit `ee70345`)

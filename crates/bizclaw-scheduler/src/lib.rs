@@ -1,7 +1,7 @@
 //! # BizClaw Scheduler
 //!
 //! Ultra-lightweight task scheduler, notification, and workflow system.
-//! Inspired by PicoClaw's file-based state and ZeroClaw's <10ms cold start.
+//! Optimized for file-based state and fast cold start.
 //!
 //! ## Design Principles (for 512MB RAM devices)
 //! - No external dependencies (no Redis, no RabbitMQ)
@@ -31,6 +31,7 @@
 pub mod cron;
 pub mod dispatch;
 pub mod engine;
+pub mod lanes;
 pub mod notify;
 pub mod persistence;
 pub mod store;
@@ -38,6 +39,7 @@ pub mod tasks;
 pub mod workflow;
 
 pub use engine::{RetryStats, SchedulerEngine};
+pub use lanes::{Lane, LaneScheduler, LaneStats, LaneTask};
 pub use notify::{Notification, NotifyChannel, NotifyRouter};
 pub use persistence::SchedulerDb;
 pub use store::TaskStore;
