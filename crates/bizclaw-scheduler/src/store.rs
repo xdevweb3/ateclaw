@@ -1,4 +1,4 @@
-//! File-based task store — PicoClaw-inspired persistence.
+//! File-based task store — lightweight persistence.
 //! Tasks saved as JSON files — human-readable, git-friendly.
 //! Zero overhead: only reads/writes on task changes, not on every tick.
 

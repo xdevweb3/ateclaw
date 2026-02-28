@@ -3,7 +3,7 @@
 //! Wildcards: *, */N, N
 //! Example: "0 8 * * *" = every day at 8:00
 //!
-//! Designed for PicoClaw-level simplicity — no cron crate dependency.
+//! Designed for simplicity — no cron crate dependency.
 
 use chrono::{DateTime, Duration, Timelike, Utc};
 

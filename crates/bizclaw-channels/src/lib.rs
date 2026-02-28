@@ -1,7 +1,7 @@
 //! # BizClaw Channels
 //! Communication channel implementations.
 //!
-//! 25+ channels supported — inspired by OpenFang's 40+ channel architecture.
+//! 25+ channels supported — comprehensive multi-platform architecture.
 
 pub mod cli;
 pub mod discord;

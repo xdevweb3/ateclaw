@@ -10,6 +10,7 @@
 //! - **Context tracking**: Monitor conversation length and estimate token usage
 
 pub mod context;
+pub mod discovery;
 pub mod engine;
 pub mod orchestrator;
 pub mod proactive;
@@ -259,8 +260,7 @@ impl Agent {
 
     /// Process a user message and generate a response.
     ///
-    /// Uses Think-Act-Observe loop (inspired by [GoClaw](https://github.com/nextlevelbuilder/goclaw))
-    /// with Quality Gate evaluation (inspired by [OpenFang](https://github.com/RightNow-AI/openfang)).
+    /// Uses Think-Act-Observe loop with Quality Gate evaluation.
     pub async fn process(&mut self, user_message: &str) -> Result<String> {
         let mut compacted = false;
         let estimated_tokens = self.estimate_tokens();

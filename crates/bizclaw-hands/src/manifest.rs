@@ -1,6 +1,6 @@
 //! Hand manifest — HAND.toml configuration format.
 //!
-//! Inspired by OpenFang's manifest-driven hand activation.
+//! Manifest-driven hand activation and lifecycle management.
 
 use serde::{Deserialize, Serialize};
 

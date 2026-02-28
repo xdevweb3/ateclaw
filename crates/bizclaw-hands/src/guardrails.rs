@@ -1,6 +1,6 @@
 //! Guardrails — approval gates for sensitive Hand actions.
 //!
-//! Inspired by OpenFang's guardrail system that requires human approval
+//! Guardrail system that requires human approval
 //! before executing dangerous or irreversible operations.
 
 use serde::{Deserialize, Serialize};

@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "Ultra-lightweight scheduler & notification system for BizClaw (PicoClaw-inspired, <1MB RAM)"
+description = "Ultra-lightweight scheduler & notification system for BizClaw (<1MB RAM)"
 
 [dependencies]
 bizclaw-core.workspace = true

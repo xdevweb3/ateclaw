@@ -1,8 +1,8 @@
 //! Unified OpenAI-compatible provider.
 //!
 //! A single struct that handles chat completions for ALL OpenAI-compatible APIs.
-//! Includes Anthropic prompt caching support (cache_control) — inspired by
-//! OpenFang's approach to minimize token costs on repeated system prompts.
+//! Includes Anthropic prompt caching support (cache_control) to minimize
+//! token costs on repeated system prompts.
 //! Different providers are distinguished only by endpoint URL, auth style, and API key.
 
 use async_trait::async_trait;

@@ -1,5 +1,5 @@
 //! Notification system — routes messages to the best available channel.
-//! PicoClaw-inspired: no queues, no Redis. Just pick a channel and send.
+//! Lightweight: no queues, no Redis. Just pick a channel and send.
 
 use serde::{Deserialize, Serialize};
 

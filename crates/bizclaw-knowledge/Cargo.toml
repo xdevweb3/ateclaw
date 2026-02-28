@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "Ultra-lightweight Knowledge Base / RAG for BizClaw (PicoClaw-inspired, file-based)"
+description = "Ultra-lightweight Knowledge Base / RAG for BizClaw (file-based)"
 
 [dependencies]
 bizclaw-core.workspace = true

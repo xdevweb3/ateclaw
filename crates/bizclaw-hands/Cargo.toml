@@ -2,7 +2,7 @@
 name = "bizclaw-hands"
 version = "0.2.0"
 edition = "2021"
-description = "Autonomous Hands — self-running agent capabilities inspired by OpenFang"
+description = "Autonomous Hands — self-running agent capabilities for BizClaw"
 
 [dependencies]
 bizclaw-core.workspace = true
@@ -13,3 +13,4 @@ tracing.workspace = true
 tokio = { workspace = true, features = ["full"] }
 chrono = { workspace = true, features = ["serde"] }
 uuid = { workspace = true, features = ["v4"] }
+dirs.workspace = true

@@ -3,7 +3,7 @@
 //! Ultra-lightweight personal RAG (Retrieval-Augmented Generation).
 //! Designed for 512MB RAM devices — no vector DB, no embeddings.
 //!
-//! ## Design (PicoClaw/ZeroClaw-inspired)
+//! ## Design
 //! - **SQLite FTS5** for full-text search (built-in, zero setup)
 //! - **BM25 scoring** — relevance ranking without embeddings
 //! - **Chunking** — split documents into ~500 char chunks

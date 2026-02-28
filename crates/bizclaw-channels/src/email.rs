@@ -1,7 +1,8 @@
-//! Email Channel — IMAP polling + SMTP sending.
+//! Email Channel — async IMAP polling + SMTP sending.
 //!
-//! Reads emails via IMAP (sync, in spawn_blocking), routes them to the AI agent,
-//! and sends replies via SMTP (async lettre). Supports Gmail, Outlook, custom servers.
+//! Reads emails via async-imap (native async), routes them to the AI agent,
+//! and sends replies via SMTP (async lettre). Supports Gmail, Outlook, custom
+//! servers.
 
 use async_trait::async_trait;
 use bizclaw_core::error::{BizClawError, Result};
@@ -84,7 +85,34 @@ pub struct ParsedEmail {
     pub message_id: Option<String>,
 }
 
-/// Email channel — IMAP reading + SMTP sending.
+/// Type alias for the TLS IMAP stream used throughout this module.
+type ImapTlsStream =
+    async_imap::Client<tokio_native_tls::TlsStream<tokio::net::TcpStream>>;
+
+/// Create TLS-wrapped IMAP connection (async, tokio-native).
+async fn connect_imap_tls(
+    host: &str,
+    port: u16,
+) -> Result<ImapTlsStream> {
+    let tcp = tokio::net::TcpStream::connect((host, port))
+        .await
+        .map_err(|e| BizClawError::Channel(format!("TCP connect: {e}")))?;
+
+    let connector = native_tls::TlsConnector::new()
+        .map_err(|e| BizClawError::Channel(format!("TLS connector: {e}")))?;
+    let connector = tokio_native_tls::TlsConnector::from(connector);
+
+    let tls_stream = connector
+        .connect(host, tcp)
+        .await
+        .map_err(|e| BizClawError::Channel(format!("TLS handshake: {e}")))?;
+
+    // tokio_native_tls::TlsStream implements tokio::io::AsyncRead/Write
+    // which is exactly what async-imap with runtime-tokio needs
+    Ok(async_imap::Client::new(tls_stream))
+}
+
+/// Email channel — async IMAP reading + SMTP sending.
 pub struct EmailChannel {
     config: EmailConfig,
     connected: bool,
@@ -100,31 +128,19 @@ impl EmailChannel {
         }
     }
 
-    /// Fetch unread emails (sync IMAP inside spawn_blocking).
+    /// Fetch unread emails (async IMAP).
     pub async fn fetch_unread(&self) -> Result<Vec<ParsedEmail>> {
-        let host = self.config.imap_host.clone();
-        let port = self.config.imap_port;
-        let email = self.config.email.clone();
-        let password = self.config.password.clone();
-        let mailbox = self.config.mailbox.clone();
-        let unread_only = self.config.unread_only;
-        let mark_as_read = self.config.mark_as_read;
-        let last_seen_uid = self.last_seen_uid.clone();
-
-        tokio::task::spawn_blocking(move || {
-            imap_fetch_sync(
-                &host,
-                port,
-                &email,
-                &password,
-                &mailbox,
-                unread_only,
-                mark_as_read,
-                &last_seen_uid,
-            )
-        })
+        imap_fetch_async(
+            &self.config.imap_host,
+            self.config.imap_port,
+            &self.config.email,
+            &self.config.password,
+            &self.config.mailbox,
+            self.config.unread_only,
+            self.config.mark_as_read,
+            &self.last_seen_uid,
+        )
         .await
-        .map_err(|e| BizClawError::Channel(format!("IMAP task panicked: {e}")))?
     }
 
     /// Send email via SMTP (async).
@@ -243,25 +259,12 @@ impl Channel for EmailChannel {
     }
 
     async fn connect(&mut self) -> Result<()> {
-        let host = self.config.imap_host.clone();
-        let port = self.config.imap_port;
-        let email = self.config.email.clone();
-        let password = self.config.password.clone();
-
-        tokio::task::spawn_blocking(move || {
-            let tls = native_tls::TlsConnector::builder()
-                .build()
-                .map_err(|e| BizClawError::Channel(format!("TLS: {e}")))?;
-            let client = imap::connect((host.as_str(), port), &host, &tls)
-                .map_err(|e| BizClawError::Channel(format!("IMAP connect: {e}")))?;
-            let mut session = client
-                .login(&email, &password)
-                .map_err(|e| BizClawError::AuthFailed(format!("IMAP auth: {}", e.0)))?;
-            session.logout().ok();
-            Ok::<(), BizClawError>(())
-        })
-        .await
-        .map_err(|e| BizClawError::Channel(format!("Task: {e}")))??;
+        let client = connect_imap_tls(&self.config.imap_host, self.config.imap_port).await?;
+        let mut session = client
+            .login(&self.config.email, &self.config.password)
+            .await
+            .map_err(|e| BizClawError::AuthFailed(format!("IMAP auth: {}", e.0)))?;
+        session.logout().await.ok();
 
         self.connected = true;
         tracing::info!("📧 Email connected: {}", self.config.email);
@@ -297,9 +300,9 @@ impl Channel for EmailChannel {
     }
 }
 
-/// Synchronous IMAP fetch — called inside spawn_blocking.
+/// Async IMAP fetch — fully async, no spawn_blocking needed.
 #[allow(clippy::too_many_arguments)]
-fn imap_fetch_sync(
+async fn imap_fetch_async(
     host: &str,
     port: u16,
     email: &str,
@@ -309,31 +312,30 @@ fn imap_fetch_sync(
     mark_as_read: bool,
     last_seen_uid: &Arc<Mutex<u32>>,
 ) -> Result<Vec<ParsedEmail>> {
-    let tls = native_tls::TlsConnector::builder()
-        .build()
-        .map_err(|e| BizClawError::Channel(format!("TLS: {e}")))?;
+    use futures::StreamExt;
 
-    let client = imap::connect((host, port), host, &tls)
-        .map_err(|e| BizClawError::Channel(format!("IMAP connect: {e}")))?;
-
+    let client = connect_imap_tls(host, port).await?;
     let mut session = client
         .login(email, password)
+        .await
         .map_err(|e| BizClawError::Channel(format!("IMAP login: {}", e.0)))?;
 
     session
         .select(mailbox)
+        .await
         .map_err(|e| BizClawError::Channel(format!("Select: {e}")))?;
 
     let search = if unread_only { "UNSEEN" } else { "ALL" };
     let uids = session
         .uid_search(search)
+        .await
         .map_err(|e| BizClawError::Channel(format!("Search: {e}")))?;
 
     let last = *last_seen_uid.lock().unwrap();
     let new_uids: Vec<u32> = uids.into_iter().filter(|&u| u > last).collect();
 
     if new_uids.is_empty() {
-        session.logout().ok();
+        session.logout().await.ok();
         return Ok(vec![]);
     }
 
@@ -342,14 +344,16 @@ fn imap_fetch_sync(
         .map(|u| u.to_string())
         .collect::<Vec<_>>()
         .join(",");
-    let messages = session
+    let mut messages = session
         .uid_fetch(&uid_set, "(UID RFC822)")
+        .await
         .map_err(|e| BizClawError::Channel(format!("Fetch: {e}")))?;
 
     let mut emails = Vec::new();
     let mut max_uid = last;
 
-    for msg in messages.iter() {
+    while let Some(msg_result) = messages.next().await {
+        let msg = msg_result.map_err(|e| BizClawError::Channel(format!("Fetch msg: {e}")))?;
         let uid = msg.uid.unwrap_or(0);
         if uid > max_uid {
             max_uid = uid;
@@ -360,12 +364,18 @@ fn imap_fetch_sync(
             }
     }
 
+    // Drop the messages stream before using session again
+    drop(messages);
+
     if mark_as_read && !new_uids.is_empty() {
-        session.uid_store(&uid_set, "+FLAGS (\\Seen)").ok();
+        session
+            .uid_store(&uid_set, "+FLAGS (\\Seen)")
+            .await
+            .ok();
     }
 
     *last_seen_uid.lock().unwrap() = max_uid;
-    session.logout().ok();
+    session.logout().await.ok();
     tracing::info!("📧 Fetched {} email(s)", emails.len());
     Ok(emails)
 }

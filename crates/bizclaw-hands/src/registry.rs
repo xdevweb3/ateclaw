@@ -18,7 +18,7 @@ impl HandRegistry {
         }
     }
 
-    /// Create registry with 7 built-in Hands (inspired by OpenFang).
+    /// Create registry with 7 built-in Hands.
     pub fn with_defaults() -> Self {
         let mut reg = Self::new();
         for manifest in builtin_hands() {
@@ -85,7 +85,7 @@ impl Default for HandRegistry {
     }
 }
 
-/// 7 built-in Hands — matching OpenFang's capability set.
+/// 7 built-in Hands.
 fn builtin_hands() -> Vec<HandManifest> {
     vec![
         HandManifest {

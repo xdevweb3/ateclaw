@@ -1,4 +1,4 @@
-//! Multi-channel adapter stubs for platforms inspired by OpenFang's 40+ channels.
+//! Multi-channel adapter stubs for additional messaging platforms.
 //!
 //! Each channel follows the same `Channel` trait pattern as existing channels.
 //! These provide the configuration + parsing layer — actual API integration

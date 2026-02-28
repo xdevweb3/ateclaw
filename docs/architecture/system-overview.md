@@ -1,7 +1,7 @@
 # BizClaw — System Architecture Overview
 
 > **Version**: 0.2.0  
-> **Last Updated**: 2026-02-23  
+> **Last Updated**: 2026-02-28  
 > **Status**: Production  
 > **Language**: Rust (100%)
 
@@ -11,12 +11,17 @@
 
 BizClaw is a **Rust-based AI Agent Infrastructure Platform** that enables:
 - Multi-tenant AI agent deployment
-- Multi-channel communication (Telegram, Zalo, WhatsApp, Email, Discord)
+- Multi-channel communication (Telegram, Zalo, WhatsApp, Email, Discord, Webhook, CLI)
 - Local LLM inference (Brain Engine via llama.cpp FFI)
-- Multi-Agent Orchestrator with agent-to-agent delegation
-- 15 built-in tools + MCP support
-- Personal RAG with FTS5 search
+- 15 LLM providers (OpenAI, Anthropic, Gemini, DeepSeek, Groq, Mistral, MiniMax, xAI, ByteDance, Ollama, llama.cpp, Brain, CLIProxy, vLLM, OpenRouter)
+- Multi-Agent Orchestrator with agent-to-agent delegation, handoff, teams
+- Provider failover chain for automatic fallback
+- 13 built-in tools + MCP support (unlimited extensions)
+- Lane-based task scheduler (main/cron/subagent/delegate)
+- SKILL.md injection for autonomous Hands
+- Dual-mode Knowledge RAG: FTS5/BM25 + PageIndex MCP (reasoning-based)
 - Session context with auto-compaction
+- 51 business agent templates (13 categories)
 
 ---
 
@@ -29,7 +34,8 @@ BizClaw is a **Rust-based AI Agent Infrastructure Platform** that enables:
 │  │            bizclaw-platform (Multi-Tenant Manager)           │   │
 │  │  • Per-tenant config (config.toml)                           │   │
 │  │  • Tenant CRUD + systemd service management                  │   │
-│  │  • JWT authentication for admin panel                        │   │
+│  │  • JWT authentication + bcrypt for admin panel               │   │
+│  │  • Audit log                                                 │   │
 │  └─────────────┬────────────────────────────────────────────────┘   │
 │                │ spawns per-tenant                                    │
 │  ┌─────────────▼────────────────────────────────────────────────┐   │
@@ -37,58 +43,62 @@ BizClaw is a **Rust-based AI Agent Infrastructure Platform** that enables:
 │  │                                                              │   │
 │  │  ┌─────────┐  ┌──────────┐  ┌──────────┐  ┌─────────────┐  │   │
 │  │  │ Gateway │  │  Agent   │  │ Channels │  │   Memory    │  │   │
-│  │  │  (Axum) │  │  Engine  │  │ (7 chan.) │  │ (SQLite)    │  │   │
-│  │  │  38 API │  │ 15 tools │  │ Telegram │  │ FTS5 search │  │   │
-│  │  │  routes │  │ MCP      │  │ Zalo     │  │ Auto-compact│  │   │
+│  │  │  (Axum) │  │  Engine  │  │ (9 types)│  │ (SQLite)    │  │   │
+│  │  │  38+API │  │ 13 tools │  │ Telegram │  │ FTS5 search │  │   │
+│  │  │  routes │  │ MCP      │  │ Zalo P/O │  │ Auto-compact│  │   │
 │  │  │  WS     │  │ RAG      │  │ WhatsApp │  │ Brain WS    │  │   │
 │  │  └─────────┘  └──────────┘  │ Discord  │  └─────────────┘  │   │
 │  │                             │ Email    │                    │   │
-│  │  ┌──────────────────────┐   │ Slack    │  ┌─────────────┐  │   │
+│  │  ┌──────────────────────┐   │ Webhook  │  ┌─────────────┐  │   │
 │  │  │  Multi-Agent Orch.   │   │ Web CLI  │  │  Scheduler  │  │   │
 │  │  │  • Named agents      │   └──────────┘  │  Cron/Once  │  │   │
 │  │  │  • Delegation        │                  │  Interval   │  │   │
-│  │  │  • Broadcast         │  ┌──────────┐   └─────────────┘  │   │
-│  │  │  • Telegram Bot ↔    │  │ Knowledge│                    │   │
-│  │  │    Agent mapping     │  │ Base RAG │                    │   │
-│  │  └──────────────────────┘  └──────────┘                    │   │
-│  │                                                              │   │
-│  │  ┌──────────────────────────────────────────────────────┐   │   │
-│  │  │              Providers Layer                          │   │   │
-│  │  │  OpenAI │ Anthropic │ Gemini │ DeepSeek │ Groq       │   │   │
-│  │  │  Ollama │ Brain Engine │ llama.cpp │ CLIProxyAPI     │   │   │
-│  │  └──────────────────────────────────────────────────────┘   │   │
+│  │  │  • Broadcast         │  ┌──────────┐   │  Retry+EBO  │  │   │
+│  │  │  • Telegram Bot ↔    │  │ Knowledge│   └─────────────┘  │   │
+│  │  │    Agent mapping     │  │ RAG+FTS5 │                    │   │
+│  │  └──────────────────────┘  │ PageIndex │                   │   │
+│  │                            └──────────┘                    │   │
+│  │  ┌──────────────────────────────────────────────────────┐  │   │
+│  │  │              Providers Layer (15 built-in)            │  │   │
+│  │  │  OpenAI │ Anthropic │ Gemini │ DeepSeek │ Groq       │  │   │
+│  │  │  Mistral │ MiniMax │ xAI (Grok) │ ByteDance ModelArk │  │   │
+│  │  │  Ollama │ Brain Engine │ llama.cpp │ CLIProxy │ vLLM  │  │   │
+│  │  └──────────────────────────────────────────────────────┘  │   │
 │  └──────────────────────────────────────────────────────────────┘   │
 │                                                                      │
 │  ┌──────────────────────────────────────────────────────────────┐   │
 │  │                     Dashboard (SPA)                           │   │
-│  │  12 pages │ i18n VI/EN │ Dark theme │ Path-based routing     │   │
+│  │  18 pages │ i18n VI/EN │ Dark theme │ Path-based routing     │   │
 │  │  Pairing code auth │ WebSocket real-time │ Responsive        │   │
+│  │  LLM Traces │ Cost Tracking │ Activity Feed                  │   │
 │  └──────────────────────────────────────────────────────────────┘   │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 3. Crate Architecture (14 crates)
+## 3. Crate Architecture (16 crates)
 
 | Crate | LOC | Purpose |
 |-------|-----|---------|
-| `bizclaw-core` | ~600 | Config, error types, traits (Channel, Provider, Identity) |
-| `bizclaw-agent` | ~800 | Agent engine, tool execution, conversation, MCP, Orchestrator |
-| `bizclaw-providers` | ~1200 | OpenAI, Anthropic, Gemini, DeepSeek, Groq, Ollama |
-| `bizclaw-channels` | ~2000 | Telegram, Zalo, WhatsApp, Discord, Email, Slack |
-| `bizclaw-tools` | ~2500 | 15 built-in tools (plan_mode, execute_code, etc.) |
-| `bizclaw-memory` | ~800 | SQLite FTS5, Brain workspace, auto-compaction |
-| `bizclaw-brain` | ~500 | llama.cpp FFI for local LLM inference |
-| `bizclaw-mcp` | ~400 | Model Context Protocol client (stdio transport) |
-| `bizclaw-gateway` | ~3000+ | Axum HTTP server, 38 API routes, WebSocket, Dashboard |
-| `bizclaw-scheduler` | ~600 | Cron/interval/once task scheduling |
-| `bizclaw-knowledge` | ~400 | RAG knowledge store with vector chunks |
-| `bizclaw-security` | ~200 | Input sanitization, path validation |
-| `bizclaw-runtime` | ~200 | Runtime abstraction (native/Docker) |
-| `bizclaw-platform` | ~1000 | Multi-tenant manager, admin panel |
+| `bizclaw-core` | ~1,964 | Config, error types, traits (Channel, Provider, Identity) |
+| `bizclaw-agent` | ~2,182 | Agent engine, Think-Act-Observe loop, MCP, Orchestrator |
+| `bizclaw-providers` | ~1,054 | 15 LLM providers (OpenAI, Anthropic, Gemini, DeepSeek, Groq, Mistral, MiniMax, xAI, ByteDance, Ollama, etc.) |
+| `bizclaw-channels` | ~4,980 | 9 channel types (Telegram, Zalo P/OA, WhatsApp, Discord, Email, Webhook, CLI) |
+| `bizclaw-tools` | ~4,949 | 13 built-in tools (plan_mode, execute_code, etc.) |
+| `bizclaw-memory` | ~1,008 | SQLite FTS5, Brain workspace, auto-compaction |
+| `bizclaw-brain` | ~3,273 | GGUF inference, mmap, SIMD (ARM NEON, x86 SSE2/AVX2) |
+| `bizclaw-mcp` | ~556 | Model Context Protocol client (JSON-RPC 2.0 via stdio) |
+| `bizclaw-gateway` | ~6,378 | Axum HTTP server, 38+ API routes, WebSocket, 18-page Dashboard |
+| `bizclaw-scheduler` | ~2,504 | Cron/interval/once task scheduling, retry with exponential backoff |
+| `bizclaw-knowledge` | ~408 | RAG knowledge store with FTS5 document chunking |
+| `bizclaw-security` | ~646 | AES-256, command allowlist, input sanitization, path validation |
+| `bizclaw-runtime` | ~93 | Runtime abstraction (native/Docker) |
+| `bizclaw-platform` | ~3,700 | Multi-tenant manager, JWT auth, admin panel, audit log |
+| `bizclaw-db` | ~1,945 | Gateway database layer (SQLite per-tenant) |
+| `bizclaw-hands` | ~1,117 | Agent hands — external action execution (WIP) |
 
-**Total**: ~14,000+ LOC Rust + 2,500+ LOC HTML/JS/CSS
+**Total**: ~36,757 LOC Rust + ~3,000 LOC HTML/JS/CSS
 
 ---
 
@@ -159,21 +169,27 @@ BizClaw is a **Rust-based AI Agent Infrastructure Platform** that enables:
 
 ---
 
-## 5. Dashboard (12 Pages)
+## 5. Dashboard (18 Pages)
 
 | Page | Path | Purpose |
 |------|------|---------|
 | Dashboard | `/` | System stats, health overview |
-| WebChat | `/chat` | Agent chat with agent selector |
+| WebChat | `/chat` | Agent chat with WebSocket streaming, agent selector |
 | Settings | `/settings` | Provider, model, identity config |
-| Providers | `/providers` | Card-based provider config |
-| Channels | `/channels` | Channel management |
-| Tools | `/tools` | 15 built-in tools display |
+| Providers | `/providers` | Card-based provider config (15 providers) |
+| Channels | `/channels` | Channel management (9 types) |
+| Tools | `/tools` | 13 built-in tools display |
 | Brain Engine | `/brain` | Local LLM, brain workspace, health check |
 | MCP Servers | `/mcp` | Model Context Protocol servers |
 | Multi-Agent | `/agents` | Create/edit/delete agents, Telegram bot |
+| Orchestration | `/orchestration` | Multi-agent delegation, broadcast |
 | Groups | `/groups` | Agent group chat |
+| Gallery | `/gallery` | 51 agent templates (13 categories) |
 | Knowledge | `/knowledge` | RAG document management |
+| Scheduler | `/scheduler` | Task scheduling management |
+| LLM Traces | `/traces` | LLM request/response tracing |
+| Cost Tracking | `/costs` | API cost tracking per agent/provider |
+| Activity Feed | `/activity` | Real-time system activity log |
 | Config File | `/configfile` | Raw config.toml editor |
 
 ---
@@ -188,7 +204,12 @@ BizClaw is a **Rust-based AI Agent Infrastructure Platform** that enables:
 | **CORS** | Configurable via `BIZCLAW_CORS_ORIGINS` |
 | **Input** | `bizclaw-security` crate (path traversal, sanitization) |
 | **Secrets** | API keys in config.toml, not in URLs |
+| **Encryption** | AES-256 for sensitive data, HMAC-SHA256 for integrity |
+| **Auth Hashing** | bcrypt for password storage |
+| **Rate Limiting** | Per-tenant rate limiting |
+| **Error Sanitization** | Zero information disclosure in error responses |
 | **Multi-Tenant** | JWT for platform admin, isolated tenant configs |
+| **Security Score** | 88/100 (audited 2026-02-25) |
 
 ---
 
@@ -202,8 +223,8 @@ BizClaw is a **Rust-based AI Agent Infrastructure Platform** that enables:
 | **Production** | bizclaw.vn (116.118.2.98), Nginx reverse proxy, subdomain routing |
 
 ### Binary Sizes
-- `bizclaw`: ~13 MB (release)
-- `bizclaw-platform`: ~7.9 MB (release)
+- `bizclaw`: ~12 MB (release, LTO + strip)
+- `bizclaw-platform`: ~7.7 MB (release, LTO + strip)
 
 ---
 
@@ -211,8 +232,10 @@ BizClaw is a **Rust-based AI Agent Infrastructure Platform** that enables:
 
 | Tenant | Subdomain | Port |
 |--------|-----------|------|
-| demo | demo.bizclaw.vn | 3001 |
-| sales | sales.bizclaw.vn | 3002 |
+| platform | apps.bizclaw.vn | 3001 |
+| demo | demo.bizclaw.vn | 10001 |
+| sales | sales.bizclaw.vn | 10002 |
+| dev | internal | 10004 |
 
 ---
 
@@ -220,12 +243,14 @@ BizClaw is a **Rust-based AI Agent Infrastructure Platform** that enables:
 
 | Category | Technology |
 |----------|-----------|
-| Language | Rust 2021 edition |
+| Language | Rust 2024 edition |
 | Web Framework | Axum 0.8 |
-| Database | SQLite (FTS5) |
-| LLM Inference | llama.cpp (C FFI) |
-| Frontend | Vanilla HTML/JS/CSS (SPA) |
-| Deployment | systemd + Nginx |
+| Database | SQLite (FTS5, per-tenant) |
+| LLM Inference | llama.cpp (C FFI), GGUF, SIMD |
+| Frontend | Vanilla HTML/JS/CSS (SPA, 18 pages) |
+| RAG | FTS5/BM25 + PageIndex MCP (reasoning-based) |
+| Deployment | systemd + Nginx + deploy.sh |
 | Container | Docker multi-stage |
 | CI/CD | GitHub Actions (future) |
 | Monitoring | `tracing` crate + systemd journal |
+| Cross-compile | cargo-zigbuild (Mac → Linux x86_64) |
